@@ -18,6 +18,8 @@ dist-client
 .env
 .env.local
 .env.*.local
+# Keep .env.gh-pages for GitHub Actions
+!.env.gh-pages
 
 # Editor directories and files
 .vscode/*
