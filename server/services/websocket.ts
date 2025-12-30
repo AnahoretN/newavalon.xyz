@@ -15,6 +15,7 @@ import {
   getPublicGames,
   deleteGameState
 } from './gameState.js';
+import { generatePlayerToken } from '../utils/deckUtils.js';
 
 // Store wss instance for broadcasting
 let wssInstance = null;
@@ -242,28 +243,25 @@ function handleDisconnection(ws) {
         if (player) {
           logGameAction(gameId, `Player ${player.name} disconnected`);
 
-          // Convert to dummy player if game is active
-          if (gameState.isGameStarted) {
-            updateGameState(gameId, {
-              players: gameState.players.map(p =>
-                p.id === ws.playerId ? { ...p, isDummy: true, ws: null } : p
-              )
-            });
-          } else {
-            // Remove player if game hasn't started
-            const remainingPlayers = gameState.players.filter(p => p.id !== ws.playerId);
-            if (remainingPlayers.length === 0) {
-              // Delete empty game
-              setTimeout(() => {
-                const currentGameState = getGameState(gameId);
-                if (currentGameState && currentGameState.players.length === 0) {
-                  deleteGameState(gameId);
-                }
-              }, 30000); // 30 second delay
-            } else {
-              updateGameState(gameId, { players: remainingPlayers });
-            }
-          }
+          // Generate playerToken if not already set (for reconnection)
+          const playerToken = player.playerToken || generatePlayerToken();
+
+          // Always mark player as disconnected (whether game started or not)
+          // This allows reconnection with the same player slot
+          updateGameState(gameId, {
+            players: gameState.players.map(p =>
+              p.id === ws.playerId
+                ? {
+                    ...p,
+                    isDisconnected: true,
+                    ws: null,
+                    playerToken,
+                    // Only convert to dummy if game is active
+                    ...(gameState.isGameStarted && { isDummy: true })
+                  }
+                : p
+            )
+          });
         } else {
           logger.warn(`Player with ws.playerId ${ws.playerId} not found in game ${gameId}`);
         }

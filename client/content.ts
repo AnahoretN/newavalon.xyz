@@ -92,6 +92,15 @@ export async function fetchContentDatabase(): Promise<void> {
     _countersDatabase = data.countersDatabase
     _deckFiles = data.deckFiles
 
+    // Save counters database to localStorage for persistence across page reloads
+    // This ensures counter icons (STATUS_ICONS) are available immediately on refresh
+    try {
+      localStorage.setItem('counters_database', JSON.stringify(_countersDatabase))
+      localStorage.setItem('counters_timestamp', Date.now().toString())
+    } catch (e) {
+      console.warn('Could not save counters database to localStorage:', e)
+    }
+
     // Update exported values (for backward compatibility)
     rawJsonData = _rawJsonData
     cardDatabase = _cardDatabase
@@ -205,6 +214,18 @@ export let tokenDatabase: Map<string, CardDefinition> = new Map()
  * Counters database (for backward compatibility) - populated after fetchContentDatabase
  */
 export let countersDatabase: Record<string, Omit<CounterDefinition, 'id'>> = {}
+
+// Load counters database from localStorage immediately for icon persistence
+// This ensures STATUS_ICONS are available even before fetchContentDatabase completes
+try {
+  const cachedCounters = localStorage.getItem('counters_database')
+  if (cachedCounters) {
+    _countersDatabase = JSON.parse(cachedCounters)
+    countersDatabase = _countersDatabase  // Update export immediately
+  }
+} catch (e) {
+  // Silently fail if localStorage is not available
+}
 
 /**
  * Deck files (for backward compatibility) - populated after fetchContentDatabase

@@ -83,8 +83,133 @@ const syncLastPlayed = (board: Board, player: Player) => {
   }
 }
 
+// localStorage keys for game state persistence
+const GAME_STATE_KEY = 'avalon_game_state'
+const RECONNECTION_DATA_KEY = 'reconnection_data'
+
+/**
+ * Sync card data (imageUrl, fallbackImage) from database
+ * This is needed after restoring from localStorage or receiving state from server
+ */
+const syncCardImages = (card: any): any => {
+  if (!card || !rawJsonData) return card
+  const { cardDatabase, tokenDatabase } = rawJsonData
+
+  // Special handling for tokens
+  if (card.deck === DeckType.Tokens || card.id?.startsWith('TKN_')) {
+    // Try baseId first (most reliable)
+    if (card.baseId && tokenDatabase[card.baseId]) {
+      const dbCard = tokenDatabase[card.baseId]
+      return { ...card, imageUrl: dbCard.imageUrl, fallbackImage: dbCard.fallbackImage }
+    }
+    // Try to find by name (fallback for tokens without proper baseId)
+    const tokenKey = Object.keys(tokenDatabase).find(key => tokenDatabase[key].name === card.name)
+    if (tokenKey) {
+      const dbCard = tokenDatabase[tokenKey]
+      return { ...card, imageUrl: dbCard.imageUrl, fallbackImage: dbCard.fallbackImage, baseId: tokenKey }
+    }
+  }
+  // Regular cards
+  else if (card.baseId && cardDatabase[card.baseId]) {
+    const dbCard = cardDatabase[card.baseId]
+    return { ...card, imageUrl: dbCard.imageUrl, fallbackImage: dbCard.fallbackImage }
+  }
+  return card
+}
+
+/**
+ * Sync all card images in a game state with the current database
+ */
+const syncGameStateImages = (gameState: GameState): GameState => {
+  if (!rawJsonData) return gameState
+
+  // Sync all cards in the board
+  const syncedBoard = gameState.board?.map(row =>
+    row.map(cell => ({
+      ...cell,
+      card: cell.card ? syncCardImages(cell.card) : null
+    }))
+  ) || gameState.board
+
+  // Sync all cards in players' hands, decks, discard
+  const syncedPlayers = gameState.players?.map(player => ({
+    ...player,
+    hand: player.hand?.map(syncCardImages) || [],
+    deck: player.deck?.map(syncCardImages) || [],
+    discard: player.discard?.map(syncCardImages) || [],
+    announcedCard: player.announcedCard ? syncCardImages(player.announcedCard) : null,
+  })) || gameState.players
+
+  return {
+    ...gameState,
+    board: syncedBoard,
+    players: syncedPlayers
+  }
+}
+
+// Save full game state to localStorage
+const saveGameState = (gameState: GameState, localPlayerId: number | null, playerToken?: string) => {
+  try {
+    // Sync images before saving to ensure all cards have proper imageUrl
+    const syncedState = syncGameStateImages(gameState)
+
+    const data = {
+      gameState: syncedState,
+      localPlayerId,
+      playerToken,
+      timestamp: Date.now(),
+    }
+    localStorage.setItem(GAME_STATE_KEY, JSON.stringify(data))
+    // Also update reconnection_data for backward compatibility
+    if (syncedState.gameId && localPlayerId !== null) {
+      localStorage.setItem(RECONNECTION_DATA_KEY, JSON.stringify({
+        gameId: syncedState.gameId,
+        playerId: localPlayerId,
+        playerToken: playerToken || null,
+        timestamp: Date.now(),
+      }))
+    }
+  } catch (e) {
+    console.warn('Failed to save game state:', e)
+  }
+}
+
+// Load game state from localStorage
+const loadGameState = (): { gameState: GameState; localPlayerId: number; playerToken?: string } | null => {
+  try {
+    const stored = localStorage.getItem(GAME_STATE_KEY)
+    if (!stored) return null
+    const data = JSON.parse(stored)
+    // Check if state is not too old (24 hours max)
+    const maxAge = 24 * 60 * 60 * 1000
+    if (Date.now() - data.timestamp > maxAge) {
+      localStorage.removeItem(GAME_STATE_KEY)
+      localStorage.removeItem(RECONNECTION_DATA_KEY)
+      return null
+    }
+
+    const restoredState = data.gameState as GameState
+    // Sync card images from database
+    const syncedState = syncGameStateImages(restoredState)
+
+    return { gameState: syncedState, localPlayerId: data.localPlayerId, playerToken: data.playerToken }
+  } catch (e) {
+    console.warn('Failed to load game state:', e)
+    return null
+  }
+}
+
+// Clear saved game state
+const clearGameState = () => {
+  localStorage.removeItem(GAME_STATE_KEY)
+  localStorage.removeItem(RECONNECTION_DATA_KEY)
+}
+
 export const useGameState = () => {
   // ... state initialization logic kept as is ...
+  // Track when rawJsonData is loaded for syncing images
+  const [contentLoaded, setContentLoaded] = useState(!!rawJsonData)
+
   const createDeck = useCallback((deckType: DeckType, playerId: number, playerName: string): Card[] => {
     const deck = decksData[deckType]
     if (!deck) {
@@ -154,6 +279,7 @@ export const useGameState = () => {
   const reconnectTimeoutRef = useRef<number | null>(null)
   const joiningGameIdRef = useRef<string | null>(null)
   const isManualExitRef = useRef<boolean>(false)
+  const playerTokenRef = useRef<string | undefined>(undefined)
 
   const gameStateRef = useRef(gameState)
   useEffect(() => {
@@ -181,7 +307,15 @@ export const useGameState = () => {
 
       // Send WebSocket message with the computed state
       if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-        ws.current.send(JSON.stringify({ type: 'UPDATE_STATE', gameState: newState }))
+        const payload: { type: string; gameState: GameState; playerToken?: string } = {
+          type: 'UPDATE_STATE',
+          gameState: newState
+        }
+        // Include playerToken for reconnection if available
+        if (playerTokenRef.current) {
+          payload.playerToken = playerTokenRef.current
+        }
+        ws.current.send(JSON.stringify(payload))
       }
 
       return newState
@@ -228,7 +362,7 @@ export const useGameState = () => {
       if (currentGameState && currentGameState.gameId && ws.current?.readyState === WebSocket.OPEN) {
         let playerToken = undefined
         try {
-          const stored = localStorage.getItem('reconnection_data')
+          const stored = localStorage.getItem(RECONNECTION_DATA_KEY)
           if (stored) {
             const data = JSON.parse(stored)
             if (data?.gameId === currentGameState.gameId && data?.playerToken) {
@@ -237,7 +371,7 @@ export const useGameState = () => {
           }
         } catch (e) {
           console.warn('Failed to parse reconnection data, clearing cache:', e instanceof Error ? e.message : String(e))
-          localStorage.removeItem('reconnection_data')
+          clearGameState()
         }
 
         ws.current.send(JSON.stringify({
@@ -257,14 +391,22 @@ export const useGameState = () => {
           setLocalPlayerId(data.playerId)
           const gameId = joiningGameIdRef.current || gameStateRef.current.gameId
           if (gameId && data.playerId !== null && data.playerToken) {
-            localStorage.setItem('reconnection_data', JSON.stringify({
-              gameId,
-              playerId: data.playerId,
-              playerToken: data.playerToken,
-              timestamp: Date.now(),
-            }))
+            // Save player token for reconnection
+            playerTokenRef.current = data.playerToken
+            // Save current game state with new player token
+            if (gameStateRef.current.gameId === gameId) {
+              saveGameState(gameStateRef.current, data.playerId, data.playerToken)
+            } else {
+              localStorage.setItem(RECONNECTION_DATA_KEY, JSON.stringify({
+                gameId,
+                playerId: data.playerId,
+                playerToken: data.playerToken,
+                timestamp: Date.now(),
+              }))
+            }
           } else if (data.playerId === null) {
-            localStorage.removeItem('reconnection_data')
+            clearGameState()
+            playerTokenRef.current = undefined
           }
           joiningGameIdRef.current = null
           if (data.playerId === 1) {
@@ -289,7 +431,7 @@ export const useGameState = () => {
             // Also update the ref immediately
             gameStateRef.current = newState
             setLocalPlayerId(null)
-            localStorage.removeItem('reconnection_data')
+            clearGameState()
             // Clear the joining game ref as well
             joiningGameIdRef.current = null
             logger.info('State cleared, gameId now =', gameStateRef.current.gameId)
@@ -306,7 +448,23 @@ export const useGameState = () => {
           setLatestFloatingTexts(data.batch)
         } else if (!data.type && data.players && data.board) {
           // Only update gameState if it's a valid game state (no type, but has required properties)
-          setGameState(data)
+          // Sync card images from database (important for tokens after reconnection)
+          const syncedData = syncGameStateImages(data)
+          setGameState(syncedData)
+          // Auto-save game state when receiving updates from server
+          gameStateRef.current = syncedData
+          if (localPlayerIdRef.current !== null && syncedData.gameId) {
+            // Get player token from reconnection_data
+            let playerToken = undefined
+            try {
+              const stored = localStorage.getItem(RECONNECTION_DATA_KEY)
+              if (stored) {
+                const parsed = JSON.parse(stored)
+                playerToken = parsed.playerToken
+              }
+            } catch (e) { /* ignore */ }
+            saveGameState(syncedData, localPlayerIdRef.current, playerToken)
+          }
         } else {
           console.warn('Unknown message type:', data.type, data)
         }
@@ -314,7 +472,7 @@ export const useGameState = () => {
         console.error('Failed to parse message from server:', event.data, error)
       }
     }
-    ws.current.onclose = (event) => {
+    ws.current.onclose = () => {
       logger.info('WebSocket connection closed')
       setConnectionStatus('Disconnected')
       if (!isManualExitRef.current) {
@@ -342,12 +500,12 @@ export const useGameState = () => {
       joiningGameIdRef.current = gameId
       let reconnectionData = null
       try {
-        const storedData = localStorage.getItem('reconnection_data')
+        const storedData = localStorage.getItem(RECONNECTION_DATA_KEY)
         if (storedData) {
           reconnectionData = JSON.parse(storedData)
         }
       } catch (e) {
-        localStorage.removeItem('reconnection_data')
+        clearGameState()
       }
       const payload: { type: string; gameId: string; playerToken?: string } = { type: 'JOIN_GAME', gameId }
       if (reconnectionData?.gameId === gameId && reconnectionData.playerToken) {
@@ -362,7 +520,16 @@ export const useGameState = () => {
 
   useEffect(() => {
     isManualExitRef.current = false
-    localStorage.removeItem('reconnection_data')
+    // Try to restore previous game state
+    const savedState = loadGameState()
+    if (savedState) {
+      logger.info('Restoring saved game state:', savedState.gameState.gameId)
+      setGameState(savedState.gameState)
+      setLocalPlayerId(savedState.localPlayerId)
+      gameStateRef.current = savedState.gameState
+      localPlayerIdRef.current = savedState.localPlayerId
+      playerTokenRef.current = savedState.playerToken
+    }
     connectWebSocket()
     return () => {
       isManualExitRef.current = true
@@ -377,9 +544,40 @@ export const useGameState = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Run only once on mount
 
+  // Sync card images after rawJsonData is loaded
+  // This fixes token images after page refresh
+  useEffect(() => {
+    if (rawJsonData && gameStateRef.current && gameStateRef.current.gameId) {
+      const synced = syncGameStateImages(gameStateRef.current)
+      // Only update if something actually changed
+      if (synced !== gameStateRef.current) {
+        setGameState(synced)
+        gameStateRef.current = synced
+      }
+    }
+  }, [rawJsonData]) // Re-run when rawJsonData changes
+
+  // Poll for rawJsonData to be loaded and sync images
+  // This is needed because rawJsonData is loaded asynchronously in App.tsx
+  useEffect(() => {
+    if (contentLoaded) return // Already loaded
+
+    const checkInterval = setInterval(() => {
+      if (rawJsonData && gameStateRef.current && gameStateRef.current.gameId) {
+        const synced = syncGameStateImages(gameStateRef.current)
+        setGameState({ ...synced }) // Force re-render
+        gameStateRef.current = synced
+        setContentLoaded(true)
+        clearInterval(checkInterval)
+      }
+    }, 100) // Check every 100ms
+
+    return () => clearInterval(checkInterval)
+  }, [contentLoaded])
+
   const createGame = useCallback(() => {
     isManualExitRef.current = false
-    localStorage.removeItem('reconnection_data')
+    clearGameState()
     const newGameId = generateGameId()
     const initialState = {
       ...createInitialState(),
@@ -409,7 +607,7 @@ export const useGameState = () => {
 
     setGameState(createInitialState())
     setLocalPlayerId(null)
-    localStorage.removeItem('reconnection_data')
+    clearGameState()
 
     if (ws.current) {
       ws.current.onclose = null

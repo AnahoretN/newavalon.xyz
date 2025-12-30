@@ -49,7 +49,7 @@ interface PlayerPanelProps {
   isDeckSelectable?: boolean;
 }
 
-const ColorPicker: React.FC<{ player: Player, canEditSettings: boolean, selectedColors: Set<PlayerColor>, onColorChange: (c: PlayerColor) => void }> = memo(({ player, canEditSettings, selectedColors, onColorChange }) => {
+const ColorPicker: React.FC<{ player: Player, canEditSettings: boolean, selectedColors: Set<PlayerColor>, onColorChange: (c: PlayerColor) => void, compact?: boolean }> = memo(({ player, canEditSettings, selectedColors, onColorChange, compact = false }) => {
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -68,20 +68,24 @@ const ColorPicker: React.FC<{ player: Player, canEditSettings: boolean, selected
     }
   }, [isOpen])
 
-  if (!canEditSettings) {
-    return <div className={`w-9 h-9 rounded-md ${PLAYER_COLORS[player.color].bg} border border-white/30 shadow-md flex-shrink-0`}></div>
-  }
+  const sizeClass = compact ? 'w-4 h-4' : 'w-9 h-9'
+  const roundedClass = compact ? 'rounded-sm' : 'rounded-md'
+  const borderClass = compact ? 'border' : 'border-2'
+  const borderColorClass = compact ? 'border-white/40' : 'border-gray-600'
+  const paddingClass = compact ? 'p-0' : 'p-0'
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`w-9 h-9 rounded-md ${PLAYER_COLORS[player.color].bg} border-2 border-gray-600 hover:border-white transition-all shadow-md flex items-center justify-center group flex-shrink-0`}
-        title="Change Color"
+        onClick={() => canEditSettings && setIsOpen(!isOpen)}
+        className={`${sizeClass} ${paddingClass} ${roundedClass} ${PLAYER_COLORS[player.color].bg} ${borderClass} ${borderColorClass} ${canEditSettings ? 'hover:border-white cursor-pointer' : 'cursor-default'} transition-all shadow-md flex items-center justify-center group flex-shrink-0`}
+        title={canEditSettings ? "Change Color" : player.color}
       >
-        <svg className="w-4 h-4 text-white/60 group-hover:text-white transition-colors drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
-        </svg>
+        {!compact && canEditSettings && (
+          <svg className={`w-4 h-4 text-white/60 group-hover:text-white transition-colors drop-shadow-md`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
       </button>
 
       {isOpen && (
@@ -140,21 +144,21 @@ const DropZone: React.FC<{ onDrop: () => void, className?: string, isOverClassNa
 }
 
 const RemoteScore: React.FC<{ score: number, onChange: (delta: number) => void, canEdit: boolean }> = ({ score, onChange, canEdit }) => (
-  <div className="w-full h-full bg-gray-800 rounded flex flex-col items-center justify-between text-white select-none overflow-hidden py-0.5">
+  <div className="w-full h-full aspect-square bg-gray-800 rounded flex flex-col items-center text-white select-none overflow-hidden">
     <button
       onClick={() => canEdit && onChange(1)}
       disabled={!canEdit}
-      className="flex-1 w-full flex items-center justify-center bg-gray-700 hover:bg-gray-600 active:bg-gray-500 transition-colors text-[10px] font-bold disabled:opacity-50 disabled:cursor-default leading-none"
+      className="h-1/3 w-full flex items-center justify-center bg-gray-700 hover:bg-gray-600 active:bg-gray-500 transition-colors text-base sm:text-xl font-bold disabled:opacity-50 disabled:cursor-default leading-none"
     >
             +
     </button>
-    <div className="flex-shrink-0 flex items-center justify-center font-bold text-sm bg-gray-800 w-full py-0.5">
+    <div className="h-1/3 flex items-center justify-center font-bold text-base sm:text-xl w-full px-px">
       {score}
     </div>
     <button
       onClick={() => canEdit && onChange(-1)}
       disabled={!canEdit}
-      className="flex-1 w-full flex items-center justify-center bg-gray-700 hover:bg-gray-600 active:bg-gray-500 transition-colors text-[10px] font-bold disabled:opacity-50 disabled:cursor-default leading-none"
+      className="h-1/3 w-full flex items-center justify-center bg-gray-700 hover:bg-gray-600 active:bg-gray-500 transition-colors text-base sm:text-xl font-bold disabled:opacity-50 disabled:cursor-default leading-none"
     >
             -
     </button>
@@ -272,18 +276,27 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
     const borderClass = isPlayerActive ? 'border-yellow-400' : 'border-gray-700'
 
     return (
-      <div className={`w-full h-full flex flex-col p-4 bg-panel-bg border-2 ${borderClass} rounded-lg shadow-2xl ${isDisconnected ? 'opacity-60' : ''}`}>
-        <div className="flex items-center gap-2 mb-[3px] flex-shrink-0 relative z-50">
+      <div className={`w-full h-full flex flex-col p-4 bg-panel-bg border-2 ${borderClass} rounded-lg shadow-2xl ${isDisconnected ? 'opacity-60' : ''} relative`}>
+        {/* Status Icons - absolute positioned in top-right corner */}
+        {/* Order from right to left: checkbox (3px from corner), first player star (2px left), win medals (2px left) */}
+        <div className="absolute top-4 right-4 flex items-center flex-row-reverse gap-[2px] z-50">
+          {/* Win medals */}
+          {winCount > 0 && Array.from({ length: winCount }).map((_, i) => (
+            <img key={`win-${i}`} src={ROUND_WIN_MEDAL_URL} alt="Round Winner" className="w-6 h-6 drop-shadow-md flex-shrink-0" title="Round Winner" />
+          ))}
+          {/* First player star */}
+          {isFirstPlayer && (
+            <img src={firstPlayerIconUrl} alt="First Player" className="w-6 h-6 drop-shadow-md flex-shrink-0" title="First Player" />
+          )}
+          {/* Active player checkbox */}
+          <input type="checkbox" checked={isPlayerActive} onChange={() => onToggleActivePlayer(player.id)} disabled={!isLocalPlayer && !player.isDummy} className={`w-6 h-6 text-yellow-400 bg-gray-700 border-2 border-yellow-400 rounded flex-shrink-0 ${!isLocalPlayer && !player.isDummy ? 'cursor-default' : 'cursor-pointer'}`} title="Active Player" />
+        </div>
+
+        {/* Header: ColorPicker + Name (name takes all available space) */}
+        <div className="flex items-center gap-2 mb-[3px] flex-shrink-0 pr-[100px]">
           <ColorPicker player={player} canEditSettings={!isGameStarted && canPerformActions} selectedColors={selectedColors} onColorChange={onColorChange} />
           <div className="flex-grow relative flex items-center min-w-0">
-            <input type="text" value={player.name} onChange={(e) => onNameChange(e.target.value)} readOnly={isGameStarted || !canPerformActions} className="bg-transparent font-bold text-xl p-1 flex-grow focus:bg-gray-800 rounded focus:outline-none border-b border-gray-600 mr-3 text-white truncate" />
-            {isFirstPlayer && (
-              <img src={firstPlayerIconUrl} alt="First Player" className="w-6 h-6 drop-shadow-md mr-3 flex-shrink-0" title="First Player" />
-            )}
-            {winCount > 0 && Array.from({ length: winCount }).map((_, i) => (
-              <img key={`win-${i}`} src={ROUND_WIN_MEDAL_URL} alt="Round Winner" className="w-6 h-6 drop-shadow-md mr-2 flex-shrink-0" title="Round Winner" />
-            ))}
-            <input type="checkbox" checked={isPlayerActive} onChange={() => onToggleActivePlayer(player.id)} disabled={!isLocalPlayer && !player.isDummy} className={`w-6 h-6 text-yellow-400 bg-gray-700 border-gray-600 rounded flex-shrink-0 ${!isLocalPlayer && !player.isDummy ? 'cursor-default' : 'cursor-pointer'}`} title="Active Player" />
+            <input type="text" value={player.name} onChange={(e) => onNameChange(e.target.value)} readOnly={isGameStarted || !canPerformActions} className="bg-transparent font-bold text-xl p-1 flex-grow focus:bg-gray-800 rounded focus:outline-none border-b border-gray-600 text-white truncate" />
           </div>
         </div>
 
@@ -341,11 +354,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             </DropZone>
 
             {/* Score */}
-            <div className="flex flex-col items-center justify-between h-full select-none text-white gap-1">
-              <button onClick={() => onScoreChange(1)} className="flex-1 w-full bg-gray-700 rounded font-bold hover:bg-gray-600 flex items-center justify-center text-base sm:text-lg transition-colors">+</button>
-              <span className="font-bold text-lg sm:text-xl flex items-center justify-center flex-1">{player.score}</span>
-              <button onClick={() => onScoreChange(-1)} className="flex-1 w-full bg-gray-700 rounded font-bold hover:bg-gray-600 flex items-center justify-center text-base sm:text-lg transition-colors">−</button>
-            </div>
+            <RemoteScore score={player.score} onChange={onScoreChange} canEdit={canPerformActions} />
           </div>
         </div>
 
@@ -374,7 +383,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                 return (
                   <div
                     key={`${card.id}-${index}`}
-                    className={`flex bg-gray-900 border border-gray-700 rounded p-2 ${targetClass}`}
+                    className={`flex items-center bg-gray-900 border border-gray-700 rounded p-2 ${targetClass}`}
                     draggable={canPerformActions}
                     onDragStart={() => canPerformActions && setDraggedItem({
                       card,
@@ -394,7 +403,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                     data-hand-card={`${player.id},${index}`}
                     data-interactive="true"
                   >
-                    <div className="w-[120px] h-[120px] flex-shrink-0 mr-3">
+                    <div className="aspect-square flex-shrink-0 mr-3 w-[28.75%] max-w-[230px] min-w-[40px] overflow-hidden rounded">
                       <CardComponent
                         card={card}
                         isFaceUp={true}
@@ -426,109 +435,120 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   if (layoutMode === 'list-remote') {
     const borderClass = isPlayerActive ? 'border-yellow-400' : 'border-gray-700'
     return (
-      <div className={`w-full h-full flex flex-col p-1 pt-[1px] bg-panel-bg border-2 ${borderClass} rounded-lg shadow-xl ${isDisconnected ? 'opacity-60' : ''} overflow-hidden`}>
-        {/* Header */}
-        <div className="flex items-center gap-2 mb-0 px-2 flex-shrink-0 min-h-[25px] mt-[2px]">
-          <div className={`w-[18px] h-[18px] rounded-sm ${PLAYER_COLORS[player.color].bg} shadow-sm border border-white/20`}></div>
-          <span className="font-bold text-white text-[14px] truncate leading-none pt-0.5 max-w-[120px]">{player.name}</span>
-
-          {/* Dummy Deck Select */}
-          {!isGameStarted && player.isDummy && canPerformActions && (
-            <select
-              value={player.selectedDeck}
-              onChange={handleDeckSelectChange}
-              className="text-sm bg-gray-700 text-white border border-gray-600 rounded px-1 py-0 h-6 w-[135px] focus:outline-none truncate"
-            >
-              {selectableDecks.map(deck => <option key={deck.id} value={deck.id}>{resources.deckNames[deck.id as keyof typeof resources.deckNames] || deck.name}</option>)}
-              <option value={DeckTypeEnum.Custom}>{t('customDeck')}</option>
-            </select>
-          )}
-
-          <div className="flex-1"></div>
-
-          <div className="flex items-center gap-1">
-            {isFirstPlayer && <img src={firstPlayerIconUrl} className="w-5 h-5" title="First Player" />}
-            {winCount > 0 && <span className="text-yellow-500 text-base font-bold">★{winCount}</span>}
+      <div className={`w-full h-full flex flex-col p-1 pt-[1px] bg-panel-bg border-2 ${borderClass} rounded-lg shadow-xl ${isDisconnected ? 'opacity-60' : ''} relative`}>
+        {/* Header: Color + Name + Deck Select + Status Icons - all in one row */}
+        <div className="flex items-center gap-1 px-1 min-h-[20px] mt-[2px] relative z-10">
+          {/* Color picker - compact for remote panels */}
+          <ColorPicker player={player} canEditSettings={!isGameStarted && canPerformActions} selectedColors={selectedColors} onColorChange={onColorChange} compact={true} />
+          {/* Name - larger font */}
+          <span className="font-bold text-white text-[14px] truncate leading-tight flex-1 min-w-0 relative z-10">{player.name}</span>
+          {/* Status icons and deck select - aligned right */}
+          <div className="flex items-center gap-[2px] flex-shrink-0">
+            {/* Dummy deck select - shown before status icons */}
+            {!isGameStarted && player.isDummy && canPerformActions && (
+              <select
+                value={player.selectedDeck}
+                onChange={handleDeckSelectChange}
+                className="text-[11px] bg-gray-700 text-white border border-gray-600 rounded px-1 py-0 h-5 w-[110px] focus:outline-none truncate flex-shrink-0"
+              >
+                {selectableDecks.map(deck => <option key={deck.id} value={deck.id}>{resources.deckNames[deck.id as keyof typeof resources.deckNames] || deck.name}</option>)}
+                <option value={DeckTypeEnum.Custom}>{t('customDeck')}</option>
+              </select>
+            )}
+            {/* Win medal */}
+            {winCount > 0 && <span className="text-yellow-500 text-[15px] font-bold whitespace-nowrap leading-none">★{winCount}</span>}
+            {/* First player star */}
+            {isFirstPlayer && <img src={firstPlayerIconUrl} className="w-[15px] h-[15px] flex-shrink-0" title="First Player" />}
+            {/* Active player checkbox */}
             <input
               type="checkbox"
               checked={isPlayerActive}
               onChange={() => onToggleActivePlayer(player.id)}
               disabled={!canPerformActions}
-              className="w-4 h-4 text-yellow-400 bg-gray-700 border-gray-600 rounded cursor-pointer flex-shrink-0 accent-yellow-500"
+              className="w-[15px] h-[15px] text-yellow-400 bg-gray-800 border-2 border-yellow-400 rounded cursor-pointer flex-shrink-0 accent-yellow-500"
               title="Active Player"
             />
           </div>
         </div>
 
         {/* Main Vertical Layout */}
-        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <div className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
 
-          {/* Row 1: Resources and Score (Fixed Height compact row) */}
-          <div className="flex items-center gap-1 px-2 mb-2 h-[77px] flex-shrink-0 mt-[2px]">
+          {/* Combined: Resources + Hand with gap-1 spacing */}
+          <div className="flex flex-col flex-1 min-h-0 gap-1 px-1 mt-[4px]">
+            {/* Row 1: Resources (Deck, Discard, Showcase) + Score at right edge - same size as hand cards */}
+            <div className="grid grid-cols-6 gap-1 flex-shrink-0 scale-96 origin-left">
             {/* Deck */}
-            <DropZone className="h-full aspect-square relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
-              <RemotePile
-                label={t('deck')}
-                count={player.deck.length}
-                onClick={handleDeckInteraction}
-                className={`bg-card-back ${shouldFlashDeck ? 'animate-deck-start' : ''} ${isDeckSelectable ? 'ring-4 ring-sky-400 shadow-[0_0_15px_#38bdf8] animate-pulse' : ''}`}
-              />
-            </DropZone>
+            <div className="aspect-square relative">
+              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
+                <RemotePile
+                  label={t('deck')}
+                  count={player.deck.length}
+                  onClick={handleDeckInteraction}
+                  className={`bg-card-back ${shouldFlashDeck ? 'animate-deck-start' : ''} ${isDeckSelectable ? 'ring-4 ring-sky-400 shadow-[0_0_15px_#38bdf8] animate-pulse' : ''}`}
+                />
+              </DropZone>
+            </div>
 
             {/* Discard */}
-            <DropZone className="h-full aspect-square relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="ring-2 ring-indigo-500">
-              <RemotePile
-                label={t('discard')}
-                count={player.discard.length}
-                className="bg-gray-700"
-              />
-            </DropZone>
+            <div className="aspect-square relative">
+              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="ring-2 ring-indigo-500">
+                <RemotePile
+                  label={t('discard')}
+                  count={player.discard.length}
+                  className="bg-gray-700"
+                />
+              </DropZone>
+            </div>
 
             {/* Showcase */}
-            <DropZone className="h-full aspect-square relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'announced', playerId: player.id })}>
-              <div className="w-full h-full bg-gray-800 border border-dashed border-gray-600 rounded flex items-center justify-center relative overflow-hidden">
-                {player.announcedCard ? (
-                  <div
-                    className="w-full h-full"
-                    draggable={canPerformActions}
-                    onDragStart={() => canPerformActions && setDraggedItem({
-                      card: player.announcedCard!,
-                      source: 'announced',
-                      playerId: player.id,
-                      isManual: true
-                    })}
-                    onDragEnd={() => setDraggedItem(null)}
-                    onContextMenu={(e) => player.announcedCard && openContextMenu(e, 'announcedCard', {
-                      card: player.announcedCard,
-                      player
-                    })}
-                    onDoubleClick={() => onAnnouncedCardDoubleClick?.(player, player.announcedCard!)}
-                  >
-                    <CardComponent
-                      card={player.announcedCard}
-                      isFaceUp={true}
-                      playerColorMap={playerColorMap}
-                      imageRefreshVersion={imageRefreshVersion}
-                      disableTooltip={false}
-                      disableActiveHighlights={disableActiveHighlights}
-                      preserveDeployAbilities={preserveDeployAbilities}
-                    />
-                  </div>
-                ) : <span className="text-[9px] font-bold text-gray-500 select-none uppercase">SHOW</span>}
-              </div>
-            </DropZone>
+            <div className="aspect-square relative">
+              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'announced', playerId: player.id })}>
+                <div className="w-full h-full bg-gray-800 border border-dashed border-gray-600 rounded flex items-center justify-center relative overflow-hidden">
+                  {player.announcedCard ? (
+                    <div
+                      className="w-full h-full"
+                      draggable={canPerformActions}
+                      onDragStart={() => canPerformActions && setDraggedItem({
+                        card: player.announcedCard!,
+                        source: 'announced',
+                        playerId: player.id,
+                        isManual: true
+                      })}
+                      onDragEnd={() => setDraggedItem(null)}
+                      onContextMenu={(e) => player.announcedCard && openContextMenu(e, 'announcedCard', {
+                        card: player.announcedCard,
+                        player
+                      })}
+                      onDoubleClick={() => onAnnouncedCardDoubleClick?.(player, player.announcedCard!)}
+                    >
+                      <CardComponent
+                        card={player.announcedCard}
+                        isFaceUp={true}
+                        playerColorMap={playerColorMap}
+                        imageRefreshVersion={imageRefreshVersion}
+                        disableTooltip={false}
+                        disableActiveHighlights={disableActiveHighlights}
+                        preserveDeployAbilities={preserveDeployAbilities}
+                      />
+                    </div>
+                  ) : <span className="text-[9px] font-bold text-gray-500 select-none uppercase">SHOW</span>}
+                </div>
+              </DropZone>
+            </div>
 
-            {/* Spacer to push score to right */}
-            <div className="flex-1"></div>
+            {/* Empty cells for spacing */}
+            <div className="aspect-square"></div>
+            <div className="aspect-square"></div>
 
-            {/* Score (Narrow, same height) */}
-            <div className="h-full w-[33px]">
+            {/* Score Counter - at right edge */}
+            <div className="aspect-square">
               <RemoteScore score={player.score} onChange={onScoreChange} canEdit={canPerformActions} />
             </div>
           </div>
 
           {/* Row 2: Hand Cards - Grid 6 cols - Scrollable with ALWAYS VISIBLE SCROLLBAR */}
-          <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'hand', playerId: player.id })} className="grid grid-cols-6 gap-1 px-2 overflow-y-scroll custom-scrollbar flex-grow content-start min-h-[30px]">
+          <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'hand', playerId: player.id })} className="grid grid-cols-6 gap-1 overflow-y-scroll custom-scrollbar flex-grow content-start min-h-[30px]">
             {player.hand.map((card, index) => {
               const isTarget = validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
               const targetClass = isTarget ? 'ring-2 ring-cyan-400 shadow-[0_0_8px_#22d3ee] rounded-md z-10' : ''
@@ -557,6 +577,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   }}
                   onDoubleClick={() => onHandCardDoubleClick(player, card, index)}
                   onClick={() => onCardClick?.(player, card, index)}
+                  onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'hand', playerId: player.id })}
                   data-hand-card={`${player.id},${index}`}
                   data-interactive="true"
                 >
@@ -577,7 +598,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
               )
             })}
           </DropZone>
-          {player.hand.length === 0 && <div className="text-center text-gray-600 text-[10px] mt-2 italic">{t('emptyHand')}</div>}
+          </div>
         </div>
       </div>
     )

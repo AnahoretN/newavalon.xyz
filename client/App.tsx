@@ -578,9 +578,21 @@ const App = memo(function App() {
 
   // Load content database from server on mount
   useEffect(() => {
-    fetchContentDatabase().catch(err => {
+    let mounted = true
+    // Check if content was already loaded (from previous render in dev mode)
+    const initialKeys = Object.keys(countersDatabase)
+
+    fetchContentDatabase().then(() => {
+      // After loading, if counters are now available, trigger a re-render
+      // This ensures STATUS_ICONS are properly loaded for status displays
+      if (mounted && Object.keys(countersDatabase).length > 0) {
+        setImageRefreshVersion(prev => prev + 1)
+      }
+    }).catch(err => {
       console.error('Failed to load content database:', err)
     })
+
+    return () => { mounted = false }
   }, [])
 
   useEffect(() => {
@@ -1884,7 +1896,7 @@ const App = memo(function App() {
           className="absolute right-0 top-14 bottom-[2px] z-30 bg-panel-bg shadow-xl flex flex-col border-l border-gray-700 min-w-0 pr-[2px] py-[2px] pl-0 transition-all duration-100 overflow-hidden"
           style={{ width: sidePanelWidth }}
         >
-          <div className="flex flex-col h-full w-full gap-[2px]">
+          <div className="flex flex-col h-full w-full">
             {gameState.players
               .filter(p => p.id !== localPlayerId)
               .map(player => (

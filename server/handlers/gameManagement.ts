@@ -62,7 +62,7 @@ export function handleSubscribe(ws, data) {
 export function handleUpdateState(ws, data) {
   try {
     // Extract gameState from the message - client sends { type: 'UPDATE_STATE', gameState: {...} }
-    const { gameState: updatedGameState } = data;
+    const { gameState: updatedGameState, playerToken } = data;
 
     // Validate game state object
     if (!updatedGameState || typeof updatedGameState !== 'object') {
@@ -86,11 +86,40 @@ export function handleUpdateState(ws, data) {
 
     const existingGameState = getGameState(gameIdToUpdate);
     if (existingGameState) {
-      // Game exists, update it
+      // Game exists - check if this is the host reconnecting
+      let assignedPlayerId = null;
+
+      if (playerToken) {
+        // Try to find the player's slot by token
+        const playerToRestore = existingGameState.players.find(
+          p => p.playerToken === playerToken && p.isDisconnected
+        );
+        if (playerToRestore) {
+          playerToRestore.isDisconnected = false;
+          playerToRestore.isDummy = false;
+          assignedPlayerId = playerToRestore.id;
+          logger.info(`Host/Player ${assignedPlayerId} reconnected via UPDATE_STATE to game ${gameIdToUpdate}`);
+        }
+      }
+
+      // If no player restored, try to assign as host if player 1 is disconnected
+      if (assignedPlayerId === null) {
+        const player1 = existingGameState.players.find(p => p.id === 1);
+        if (player1 && player1.isDisconnected) {
+          player1.isDisconnected = false;
+          player1.isDummy = false;
+          assignedPlayerId = 1;
+          logger.info(`Player 1 restored via UPDATE_STATE to game ${gameIdToUpdate}`);
+        }
+      }
+
+      // Update game state with client's state
       Object.assign(existingGameState, updatedGameState);
       associateClientWithGame(ws, gameIdToUpdate);
+      ws.gameId = gameIdToUpdate;
+      ws.playerId = assignedPlayerId ?? 1; // Default to host if not assigned
       broadcastToGame(gameIdToUpdate, existingGameState);
-      logger.info(`State updated for game ${gameIdToUpdate}`);
+      logger.info(`State updated for game ${gameIdToUpdate}, playerId=${ws.playerId}`);
     } else {
       // Game doesn't exist, create it
       const newGameState = createGameState(gameIdToUpdate, updatedGameState);
@@ -136,6 +165,7 @@ export function handleJoinGame(ws, data) {
       );
       if (playerToReconnect) {
         playerToReconnect.isDisconnected = false;
+        playerToReconnect.isDummy = false; // Restore as real player
         ws.playerId = playerToReconnect.id;
 
         // Cancel any game termination timer

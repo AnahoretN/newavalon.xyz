@@ -6,7 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
-## [0.2.3] - 2025-12-30
+## [0.2.4] - 2025-12-30
+
+### Changed
+- **UI/UX Improvements for Remote Player Panels**
+  - Unified card sizing: all cards in hand now use aspect-square for consistent square shape
+  - Local player hand cards are 15% larger than deck cards
+  - Remote player panel resources (deck, discard, showcase, score) sized at 96% of hand card size
+  - Score counter uses aspect-square with each button at 1/3 height
+  - Removed horizontal gaps between remote player panels for cleaner layout
+  - Vertical spacing between resources and hand cards now uses gap-1 (same as between cards)
+  - Scrollbar restored for hand cards in remote panels
+  - Player name dynamically shrinks to accommodate status icons (star, medal, checkbox)
+  - Status icons (active player checkbox, win stars) absolutely positioned in top-right corner
+  - Compact color picker for remote panels (smaller, rounded-sm, no arrow icon)
+  - Deck select for dummy players moved to header row in remote panels
+
+### Fixed
+- Counter icons now load immediately after page refresh by caching in localStorage
+- Improved game state restoration on reconnect with playerToken support
+- RemoteScore component properly sized to match deck dimensions
 
 ### Fixed
 - Fixed deck data sync - server now correctly preserves `cards` array with `cardId/quantity` format when receiving deck data from client
