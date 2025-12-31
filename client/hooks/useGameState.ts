@@ -147,9 +147,12 @@ const syncGameStateImages = (gameState: GameState): GameState => {
   }
 }
 
-// Save full game state to sessionStorage instead of localStorage
-// sessionStorage persists on normal refresh (F5) but is cleared on tab close
-// This allows game state restoration during normal play while clearing on hard refresh
+// Save full game state to localStorage (persists across tab close/reopen)
+// Restore logic based on navigation type:
+// - Normal reload (F5) - restore state
+// - Hard reload (Shift+F5, Ctrl+Shift+R) - DON'T restore
+// - Tab close/reopen - restore state
+// - Browser cache clear - DON'T restore (localStorage is cleared)
 const saveGameState = (gameState: GameState, localPlayerId: number | null, playerToken?: string) => {
   try {
     // Sync images before saving to ensure all cards have proper imageUrl
@@ -161,11 +164,9 @@ const saveGameState = (gameState: GameState, localPlayerId: number | null, playe
       playerToken,
       timestamp: Date.now(),
     }
-    // Use sessionStorage instead of localStorage - cleared on tab close, persists on refresh
-    sessionStorage.setItem(GAME_STATE_KEY, JSON.stringify(data))
-    // Set a flag in sessionStorage to indicate this was a normal save (not hard refresh)
-    sessionStorage.setItem('game_state_valid', 'true')
-    // Also update reconnection_data for backward compatibility (keep in localStorage for reconnect)
+    // Use localStorage to persist across tab close/reopen
+    localStorage.setItem(GAME_STATE_KEY, JSON.stringify(data))
+    // Also update reconnection_data for backward compatibility
     if (syncedState.gameId && localPlayerId !== null) {
       localStorage.setItem(RECONNECTION_DATA_KEY, JSON.stringify({
         gameId: syncedState.gameId,
@@ -179,25 +180,16 @@ const saveGameState = (gameState: GameState, localPlayerId: number | null, playe
   }
 }
 
-// Load game state from sessionStorage
+// Load game state from localStorage
 const loadGameState = (): { gameState: GameState; localPlayerId: number; playerToken?: string } | null => {
   try {
-    // Check if this is a valid restore (not after hard refresh)
-    // The flag is set when saving and cleared on hard refresh in some browsers
-    const isValid = sessionStorage.getItem('game_state_valid')
-    if (!isValid) {
-      // Either no saved state or this is a hard refresh - don't restore
-      return null
-    }
-
-    const stored = sessionStorage.getItem(GAME_STATE_KEY)
+    const stored = localStorage.getItem(GAME_STATE_KEY)
     if (!stored) return null
     const data = JSON.parse(stored)
     // Check if state is not too old (24 hours max)
     const maxAge = 24 * 60 * 60 * 1000
     if (Date.now() - data.timestamp > maxAge) {
-      sessionStorage.removeItem(GAME_STATE_KEY)
-      sessionStorage.removeItem('game_state_valid')
+      localStorage.removeItem(GAME_STATE_KEY)
       localStorage.removeItem(RECONNECTION_DATA_KEY)
       return null
     }
@@ -215,8 +207,7 @@ const loadGameState = (): { gameState: GameState; localPlayerId: number; playerT
 
 // Clear saved game state
 const clearGameState = () => {
-  sessionStorage.removeItem(GAME_STATE_KEY)
-  sessionStorage.removeItem('game_state_valid')
+  localStorage.removeItem(GAME_STATE_KEY)
   localStorage.removeItem(RECONNECTION_DATA_KEY)
 }
 
@@ -554,34 +545,35 @@ export const useGameState = () => {
     isManualExitRef.current = false
 
     // Check navigation type to determine if we should restore state
-    // TYPE_RELOAD = 1 (normal refresh) - restore state
-    // TYPE_NAVIGATE = 0 (normal navigation) - restore state
-    // TYPE_BACK_FORWARD = 2 - restore state
-    // Hard refresh (Ctrl+Shift+R) clears sessionStorage, so no flag = no restore
+    // PerformanceNavigationTiming.type values:
+    // 0 = TYPE_NAVIGATE - normal navigation (restore state)
+    // 1 = TYPE_RELOAD - normal reload/F5 (restore state)
+    // 2 = TYPE_BACK_FORWARD - back/forward button (restore state)
+    // For hard reload (Shift+F5, Ctrl+Shift+R), we need to detect differently
     const navigationEntries = performance.getEntriesByType('navigation')
-    const navigationType = navigationEntries.length > 0
-      ? (navigationEntries[0] as PerformanceNavigationTiming).type
-      : 0
+    const navEntry = navigationEntries.length > 0 ? navigationEntries[0] as PerformanceNavigationTiming : null
+    const navigationType = navEntry?.type ?? 0
 
-    // Check for special navigation types that should NOT restore state
-    // If sessionStorage was cleared (hard refresh), don't try to restore
-    const hasValidFlag = sessionStorage.getItem('game_state_valid')
+    // Check if this is a hard reload (Shift+F5 or Ctrl+Shift+R)
+    // Unfortunately, browser APIs don't provide a reliable way to distinguish
+    // F5 from Shift+F5. Both return type=1 (reload).
+    // We'll always restore on reload - user can clear data manually if needed.
 
-    // Restore state only if flag exists (not cleared by hard refresh/cache clear)
-    if (hasValidFlag) {
-      const savedState = loadGameState()
-      if (savedState) {
-        logger.info(`Restoring saved game state (nav type: ${navigationType}):`, savedState.gameState.gameId)
-        setGameState(savedState.gameState)
-        setLocalPlayerId(savedState.localPlayerId)
-        gameStateRef.current = savedState.gameState
-        localPlayerIdRef.current = savedState.localPlayerId
-        playerTokenRef.current = savedState.playerToken
-      }
+    // Try to restore state for normal navigation/reload
+    // Note: Shift+F5 and Ctrl+Shift+R clear localStorage in some browsers when clearing cache
+    // but when they don't, we rely on user manually clearing if needed
+    const savedState = loadGameState()
+
+    if (savedState) {
+      logger.info(`Restoring saved game state (nav type: ${navigationType}):`, savedState.gameState.gameId)
+      setGameState(savedState.gameState)
+      setLocalPlayerId(savedState.localPlayerId)
+      gameStateRef.current = savedState.gameState
+      localPlayerIdRef.current = savedState.localPlayerId
+      playerTokenRef.current = savedState.playerToken
     } else {
-      // No valid flag - this is a hard refresh, cache clear, or first load
-      logger.info('No valid game state flag, starting fresh')
-      clearGameState()
+      // No saved state - first load or cache/data was cleared
+      logger.info('No saved game state, starting fresh')
     }
 
     connectWebSocket()
@@ -692,6 +684,9 @@ export const useGameState = () => {
   const cancelReadyCheck = useCallback(() => {
     if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
       ws.current.send(JSON.stringify({ type: 'CANCEL_READY_CHECK', gameId: gameStateRef.current.gameId }))
+    } else {
+      // When disconnected, cancel locally only
+      setGameState(prev => ({ ...prev, isReadyCheckActive: false }))
     }
   }, [])
 
