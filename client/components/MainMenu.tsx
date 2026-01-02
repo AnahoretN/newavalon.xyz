@@ -75,12 +75,51 @@ export const MainMenu: React.FC<MainMenuProps> = memo(({
         <h1 className="text-5xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-600 drop-shadow-lg">
                     New Avalon
         </h1>
-        <h2 className="text-2xl font-light mb-8 text-gray-300 tracking-widest">SKIRMISH</h2>
+        <h2 className="text-2xl font-light mb-4 text-gray-300 tracking-widest">SKIRMISH</h2>
+
+        {/* Connection Status Indicator */}
+        <div className="mb-6 flex items-center justify-center gap-2">
+          <span className={`relative flex h-3 w-3`}>
+            {connectionStatus === 'Connected' && (
+              <>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              </>
+            )}
+            {connectionStatus === 'Connecting' && (
+              <>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+              </>
+            )}
+            {connectionStatus === 'Disconnected' && (
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+            )}
+          </span>
+          <span className="text-sm text-gray-400">
+            {connectionStatus === 'Connected' && t('connected')}
+            {connectionStatus === 'Connecting' && t('connecting')}
+            {connectionStatus === 'Disconnected' && t('disconnected')}
+          </span>
+          {connectionStatus === 'Disconnected' && (
+            <button
+              onClick={forceReconnect}
+              className="ml-2 text-xs text-blue-400 hover:text-blue-300 underline"
+            >
+              {t('reconnect')}
+            </button>
+          )}
+        </div>
 
         <div className="space-y-4 w-full">
           <button
             onClick={handleCreateGame}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center gap-2"
+            disabled={connectionStatus !== 'Connected'}
+            className={`w-full font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform flex items-center justify-center gap-2 ${
+              connectionStatus === 'Connected'
+                ? 'bg-indigo-600 hover:bg-indigo-700 text-white hover:scale-105'
+                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+            }`}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
             {t('startGame')}
@@ -88,7 +127,12 @@ export const MainMenu: React.FC<MainMenuProps> = memo(({
 
           <button
             onClick={handleOpenJoinModal}
-            className="w-full bg-gray-700 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform hover:scale-105 flex items-center justify-center gap-2"
+            disabled={connectionStatus !== 'Connected'}
+            className={`w-full font-bold py-3 px-6 rounded-lg shadow-lg transition-all transform flex items-center justify-center gap-2 ${
+              connectionStatus === 'Connected'
+                ? 'bg-gray-700 hover:bg-gray-600 text-white hover:scale-105'
+                : 'bg-gray-800 text-gray-500 cursor-not-allowed'
+            }`}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
             {t('joinGame')}
