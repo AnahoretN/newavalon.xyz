@@ -16,16 +16,6 @@ interface SettingsModalProps {
   isPrivate?: boolean;
 }
 
-// Connection indicator colors
-const getStatusColor = (status: ConnectionStatus): string => {
-  switch (status) {
-    case 'Connected': return 'bg-green-500'
-    case 'Connecting': return 'bg-yellow-500'
-    case 'Disconnected': return 'bg-red-500'
-    default: return 'bg-gray-500'
-  }
-}
-
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
@@ -169,9 +159,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 }`}
                 title={connectionStatus}
               >
-                <div className={`w-3 h-3 rounded-full ${getStatusColor(connectionStatus)} ${
-                  connectionStatus === 'Connecting' ? 'animate-pulse' : ''
-                }`} />
+                <span className="relative flex h-3 w-3">
+                  {connectionStatus === 'Connected' && (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </>
+                  )}
+                  {connectionStatus === 'Connecting' && (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                    </>
+                  )}
+                  {connectionStatus === 'Disconnected' && (
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  )}
+                </span>
               </div>
             </div>
             <p className="text-xs text-gray-400 mt-1">

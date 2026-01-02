@@ -42,19 +42,24 @@ interface HeaderProps {
 }
 
 const StatusIndicator = memo<{ connectionStatus: ConnectionStatus }>(({ connectionStatus }) => {
-  const color = useMemo(() => {
-    switch (connectionStatus) {
-      case 'Connected':
-        return 'bg-green-500 animate-pulse'
-      case 'Disconnected':
-        return 'bg-red-500'
-      default:
-        return 'bg-gray-500'
-    }
-  }, [connectionStatus])
-
   return (
-    <div className={`w-3 h-3 rounded-full ${color} transition-colors`} title={connectionStatus} />
+    <span className="relative flex h-3 w-3" title={connectionStatus}>
+      {connectionStatus === 'Connected' && (
+        <>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+        </>
+      )}
+      {connectionStatus === 'Connecting' && (
+        <>
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+        </>
+      )}
+      {connectionStatus === 'Disconnected' && (
+        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+      )}
+    </span>
   )
 })
 
