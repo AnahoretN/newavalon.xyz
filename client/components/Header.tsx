@@ -6,6 +6,7 @@ import type { ConnectionStatus } from '@/hooks/useGameState'
 import { TURN_PHASES, MAX_PLAYERS } from '@/constants'
 import { useLanguage } from '@/contexts/LanguageContext'
 import type { TranslationResource } from '@/locales/types'
+import { generateInviteLink } from '@/utils/inviteLinks'
 
 interface HeaderProps {
   gameId: string | null;
@@ -319,22 +320,8 @@ const InvitePlayerMenu = memo<{
   const handleCopyLink = useCallback(() => {
     if (!gameId) return
 
-    // Get the game site URL (where the game is hosted)
-    const baseUrl = window.location.origin
-
-    // Get the WebSocket server URL we're connected to
-    const wsUrl = localStorage.getItem('websocket_url') || ''
-
-    // Encode the WebSocket URL for safe transmission
-    const encodedServerUrl = wsUrl
-      ? btoa(encodeURIComponent(wsUrl))
-      : ''
-
-    // Create invite link: game site URL + game ID + encoded server URL
-    // Format: baseUrl?game=gameId&s=encodedServerUrl
-    const inviteLink = encodedServerUrl
-      ? `${baseUrl}?game=${gameId}&s=${encodedServerUrl}`
-      : `${baseUrl}?game=${gameId}`
+    // Generate context-aware invite link based on current game state
+    const { url: inviteLink } = generateInviteLink(gameId, isGameStarted, isPrivate)
 
     // Copy to clipboard
     navigator.clipboard.writeText(inviteLink).then(() => {
@@ -343,7 +330,7 @@ const InvitePlayerMenu = memo<{
     }).catch(err => {
       console.error('Failed to copy:', err)
     })
-  }, [gameId])
+  }, [gameId, isGameStarted, isPrivate])
 
   if (!isOpen || !anchorEl) return null
 

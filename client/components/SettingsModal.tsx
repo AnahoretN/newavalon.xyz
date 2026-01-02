@@ -3,6 +3,7 @@ import { useLanguage } from '@/contexts/LanguageContext'
 import { AVAILABLE_LANGUAGES, LANGUAGE_NAMES } from '@/locales'
 import type { LanguageCode } from '@/locales/types'
 import type { ConnectionStatus } from '@/hooks/useGameState'
+import { generateInviteLink } from '@/utils/inviteLinks'
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -10,6 +11,9 @@ interface SettingsModalProps {
   onSave: (url: string) => void;
   connectionStatus: ConnectionStatus;
   onReconnect: () => void;
+  gameId?: string | null;
+  isGameStarted?: boolean;
+  isPrivate?: boolean;
 }
 
 // Connection indicator colors
@@ -27,7 +31,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSave,
   connectionStatus,
-  onReconnect
+  onReconnect,
+  gameId = null,
+  isGameStarted = false,
+  isPrivate = false,
 }) => {
   const { language, setLanguage, t } = useLanguage()
   const [serverUrl, setServerUrl] = useState('')
@@ -93,23 +100,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   }
 
   const handleCopyGameLink = () => {
-    // Get the current base URL (where the game is hosted)
-    const baseUrl = window.location.origin
-
-    // Use the active websocket_url (the one we're actually connected to)
-    // not the input value, since we want to share the working connection
-    const activeServerUrl = localStorage.getItem('websocket_url') || ''
-
-    // Encode the server URL for safe transmission
-    // Using btoa for base64 encoding with URI encoding for special characters
-    const encodedServerUrl = activeServerUrl
-      ? btoa(encodeURIComponent(activeServerUrl))
-      : ''
-
-    // Create invite link with encoded server parameter
-    const inviteLink = encodedServerUrl
-      ? `${baseUrl}?s=${encodedServerUrl}`
-      : baseUrl
+    // Generate context-aware invite link based on current game state
+    const { url: inviteLink } = generateInviteLink(gameId, isGameStarted, isPrivate)
 
     // Copy to clipboard
     navigator.clipboard.writeText(inviteLink).then(() => {

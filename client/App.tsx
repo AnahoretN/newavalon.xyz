@@ -1577,6 +1577,9 @@ const App = memo(function App() {
         t={t}
         connectionStatus={connectionStatus}
         forceReconnect={forceReconnect}
+        gameId={gameState.gameId}
+        isGameStarted={gameState.isGameStarted}
+        isPrivate={gameState.isPrivate}
       />
     )
   }

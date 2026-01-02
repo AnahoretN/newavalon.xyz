@@ -30,6 +30,9 @@ interface MainMenuProps {
     t: (key: any) => string;
     connectionStatus: ConnectionStatus;
     forceReconnect: () => void;
+    gameId?: string | null;
+    isGameStarted?: boolean;
+    isPrivate?: boolean;
 }
 
 export const MainMenu: React.FC<MainMenuProps> = memo(({
@@ -53,6 +56,9 @@ export const MainMenu: React.FC<MainMenuProps> = memo(({
   t,
   connectionStatus,
   forceReconnect,
+  gameId = null,
+  isGameStarted = false,
+  isPrivate = false,
 }) => {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white relative overflow-hidden">
@@ -170,6 +176,9 @@ export const MainMenu: React.FC<MainMenuProps> = memo(({
         onSave={handleSaveSettings}
         connectionStatus={connectionStatus}
         onReconnect={forceReconnect}
+        gameId={gameId}
+        isGameStarted={isGameStarted}
+        isPrivate={isPrivate}
       />
 
       <RulesModal
