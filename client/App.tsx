@@ -51,7 +51,7 @@ const App = memo(function App() {
     localPlayerId,
     setLocalPlayerId,
     createGame,
-    joinGame,
+    joinGameViaModal,
     startReadyCheck,
     cancelReadyCheck,
     playerReady,
@@ -1043,9 +1043,9 @@ const App = memo(function App() {
   }, [assignTeams, startReadyCheck])
 
   const handleJoinGame = useCallback((gameId: string) => {
-    joinGame(gameId)
+    joinGameViaModal(gameId)
     setModalsState(prev => ({ ...prev, isJoinModalOpen: false }))
-  }, [joinGame])
+  }, [joinGameViaModal])
 
   const handleCreateGame = useCallback(() => {
     createGame()

@@ -42,6 +42,20 @@ const getWebSocketURL = () => {
   return url
 }
 
+/**
+ * Optimized deep clone function for GameState.
+ * Much faster than JSON.parse(JSON.stringify()) for our specific data structure.
+ * Uses structuredClone for modern browsers with fallback.
+ */
+const deepCloneState = (state: GameState): GameState => {
+  // Use structuredClone if available (modern browsers) - much faster
+  if (typeof structuredClone !== 'undefined') {
+    return structuredClone(state)
+  }
+  // Fallback to JSON method for older browsers
+  return JSON.parse(JSON.stringify(state))
+}
+
 export type ConnectionStatus = 'Connecting' | 'Connected' | 'Disconnected';
 
 const generateGameId = () => Math.random().toString(36).substring(2, 18).toUpperCase()
@@ -286,6 +300,7 @@ export const useGameState = () => {
   const reconnectTimeoutRef = useRef<number | null>(null)
   const joiningGameIdRef = useRef<string | null>(null)
   const isManualExitRef = useRef<boolean>(false)
+  const isJoinAttemptRef = useRef<boolean>(false) // Track if user is trying to join via Join Game modal
   const playerTokenRef = useRef<string | undefined>(undefined)
 
   const gameStateRef = useRef(gameState)
@@ -446,8 +461,9 @@ export const useGameState = () => {
             setLocalPlayerId(null)
             clearGameState()
             joiningGameIdRef.current = null
-          } else if (data.message.includes('already started')) {
-            // Game already started - show alert and return to menu
+          } else if (data.message.includes('already started') && isJoinAttemptRef.current) {
+            // Game already started - show alert ONLY when user tries to join via Join Game modal
+            // Skip this error for automatic reconnection (F5, reconnect, etc.)
             logger.info('Game already started - showing alert and returning to menu')
             alert('This game has already started.')
             const newState = createInitialState()
@@ -456,6 +472,7 @@ export const useGameState = () => {
             setLocalPlayerId(null)
             clearGameState()
             joiningGameIdRef.current = null
+            isJoinAttemptRef.current = false
           } else {
             console.warn('Server Error:', data.message)
           }
@@ -556,6 +573,12 @@ export const useGameState = () => {
       joiningGameIdRef.current = gameId
     }
   }, [connectWebSocket])
+
+  // Join game via Join Game modal - sets flag to show "already started" error if needed
+  const joinGameViaModal = useCallback((gameId: string): void => {
+    isJoinAttemptRef.current = true
+    joinGame(gameId)
+  }, [joinGame])
 
   useEffect(() => {
     isManualExitRef.current = false
@@ -734,7 +757,7 @@ export const useGameState = () => {
     if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId && localPlayerIdRef.current === 1) {
       ws.current.send(JSON.stringify({ type: 'UPDATE_DECK_DATA', deckData: rawJsonData }))
       const currentState = gameStateRef.current
-      const refreshedState = JSON.parse(JSON.stringify(currentState))
+      const refreshedState = deepCloneState(currentState)
       refreshedState.players.forEach((p: Player) => {
         ['hand', 'deck', 'discard'].forEach(pile => {
           // @ts-ignore
@@ -844,7 +867,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card) {
         // Lucius, The Immortal Immunity: Cannot be stunned
@@ -879,7 +902,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card?.statuses) {
         const lastIndex = card.statuses.map(s => s.type).lastIndexOf(status)
@@ -897,7 +920,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card?.statuses) {
         const index = card.statuses.findIndex(s => s.type === status && s.addedByPlayerId === ownerId)
@@ -915,7 +938,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card) {
         if (card.powerModifier === undefined) {
@@ -933,7 +956,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       if (player?.announcedCard) {
         if (['Support', 'Threat', 'Revealed'].includes(status)) {
@@ -956,7 +979,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       if (player?.announcedCard?.statuses) {
         const lastIndex = player.announcedCard.statuses.map(s => s.type).lastIndexOf(status)
@@ -973,7 +996,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       if (player?.announcedCard) {
         if (player.announcedCard.powerModifier === undefined) {
@@ -990,7 +1013,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       if (player?.hand[cardIndex]) {
         const card = player.hand[cardIndex]
@@ -1014,7 +1037,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       const card = player?.hand[cardIndex]
       if (card?.statuses) {
@@ -1038,7 +1061,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card) {
         card.isFaceDown = false
@@ -1053,7 +1076,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card) {
         card.isFaceDown = true
@@ -1069,7 +1092,7 @@ export const useGameState = () => {
       if (!player?.hand[cardIndex]) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const cardToReveal = newState.players.find(p => p.id === playerId)!.hand[cardIndex]
       if (revealTarget === 'all') {
         cardToReveal.revealedTo = 'all'
@@ -1096,7 +1119,7 @@ export const useGameState = () => {
       if (!cardToReveal) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const cardInNewState = newState.board[boardCoords.row][boardCoords.col].card!
       const ownerId = cardInNewState.ownerId
       if (revealTarget === 'all') {
@@ -1128,7 +1151,7 @@ export const useGameState = () => {
       if (!ownerId) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const existingRequest = newState.revealRequests.find(
         (req: RevealRequest) => req.fromPlayerId === requestingPlayerId && req.toPlayerId === ownerId,
       )
@@ -1158,7 +1181,7 @@ export const useGameState = () => {
       if (requestIndex === -1) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const request = newState.revealRequests[requestIndex]
       if (accepted) {
         const { cardIdentifiers } = request
@@ -1189,7 +1212,7 @@ export const useGameState = () => {
 
   const removeRevealedStatus = useCallback((cardIdentifier: { source: 'hand' | 'board'; playerId?: number; cardIndex?: number; boardCoords?: { row: number, col: number }}) => {
     updateState(currentState => {
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       let cardToUpdate: Card | null = null
       if (cardIdentifier.source === 'board' && cardIdentifier.boardCoords) {
         cardToUpdate = newState.board[cardIdentifier.boardCoords.row][cardIdentifier.boardCoords.col].card
@@ -1244,7 +1267,7 @@ export const useGameState = () => {
         return currentState
       }
 
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
 
       if (player) {
@@ -1322,7 +1345,7 @@ export const useGameState = () => {
       if (!player || player.deck.length === 0) {
         return currentState
       }
-      const newState = JSON.parse(JSON.stringify(currentState))
+      const newState = deepCloneState(currentState)
       const playerToUpdate = newState.players.find((p: Player) => p.id === playerId)!
       const cardDrawn = playerToUpdate.deck.shift()
       if (cardDrawn) {
@@ -1341,7 +1364,7 @@ export const useGameState = () => {
       if (!player) {
         return currentState
       }
-      const newState = JSON.parse(JSON.stringify(currentState))
+      const newState = deepCloneState(currentState)
       const playerToUpdate = newState.players.find((p: Player) => p.id === playerId)!
       playerToUpdate.deck = shuffleDeck(playerToUpdate.deck)
       return newState
@@ -1386,7 +1409,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
 
       if (newState.isScoringStep) {
         // IMPORTANT: Set currentPhase to 0 IMMEDIATELY after clearing isScoringStep
@@ -1578,7 +1601,7 @@ export const useGameState = () => {
 
   const confirmRoundEnd = useCallback(() => {
     updateState(currentState => {
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       newState.isRoundEndModalOpen = false
       newState.players.forEach(p => p.score = 0)
       newState.currentRound += 1
@@ -1630,7 +1653,7 @@ export const useGameState = () => {
         target.target === 'board' &&
         (item.card.types?.includes('Unit') || item.card.types?.includes('Command'))
 
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
 
       if (item.source === 'board' && ['hand', 'deck', 'discard'].includes(target.target) && !item.bypassOwnershipCheck) {
         const cardOwnerId = item.card.ownerId
@@ -1987,7 +2010,7 @@ export const useGameState = () => {
       if (currentState.board[boardCoords.row][boardCoords.col].card !== null) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       if (player && player.discard.length > cardIndex) {
         const [card] = player.discard.splice(cardIndex, 1)
@@ -2036,7 +2059,7 @@ export const useGameState = () => {
 
   const reorderTopDeck = useCallback((playerId: number, newTopOrder: Card[]) => {
     updateState(currentState => {
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
 
       if (player && newTopOrder.length > 0) {
@@ -2069,7 +2092,7 @@ export const useGameState = () => {
    */
   const reorderCards = useCallback((playerId: number, newCards: Card[], source: 'deck' | 'discard') => {
     updateState(currentState => {
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
 
       if (player) {
@@ -2135,7 +2158,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card) {
         // Remove the ready status if specified (new ready status system)
@@ -2152,7 +2175,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card) {
         // New system: Add readyDeploy status back (for Command cards that restore deploy ability)
@@ -2182,7 +2205,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card = newState.board[boardCoords.row][boardCoords.col].card
       if (card?.statuses) {
         card.statuses = card.statuses.filter(s => s.type !== type)
@@ -2203,7 +2226,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       targetCoords.forEach(({ row, col }) => {
         const card = newState.board[row][col].card
         if (card) {
@@ -2241,7 +2264,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const card1 = newState.board[coords1.row][coords1.col].card
       const card2 = newState.board[coords2.row][coords2.col].card
       newState.board[coords1.row][coords1.col].card = card2
@@ -2256,7 +2279,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const fromCard = newState.board[fromCoords.row][fromCoords.col].card
       const toCard = newState.board[toCoords.row][toCoords.col].card
       if (fromCard && toCard && fromCard.statuses) {
@@ -2279,7 +2302,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const fromCard = newState.board[fromCoords.row][fromCoords.col].card
       const toCard = newState.board[toCoords.row][toCoords.col].card
       const excludedTypes = ['Support', 'Threat']
@@ -2304,7 +2327,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       const player = newState.players.find(p => p.id === playerId)
       if (player && player.discard.length > cardIndex) {
         const [card] = player.discard.splice(cardIndex, 1)
@@ -2319,7 +2342,7 @@ export const useGameState = () => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      const newState: GameState = JSON.parse(JSON.stringify(currentState))
+      const newState: GameState = deepCloneState(currentState)
       if (!rawJsonData) {
         return currentState
       }
@@ -2419,7 +2442,7 @@ export const useGameState = () => {
     }
 
     updateState(prevState => {
-      const newState: GameState = JSON.parse(JSON.stringify(prevState))
+      const newState: GameState = deepCloneState(prevState)
       const player = newState.players.find(p => p.id === playerId)
       if (player) {
         player.score += totalScore
@@ -2484,7 +2507,7 @@ export const useGameState = () => {
     }
 
     updateState(prevState => {
-      const newState: GameState = JSON.parse(JSON.stringify(prevState))
+      const newState: GameState = deepCloneState(prevState)
       const player = newState.players.find(p => p.id === playerId)
       if (player) {
         player.score += totalScore
@@ -2514,6 +2537,7 @@ export const useGameState = () => {
     latestNoTarget,
     createGame,
     joinGame,
+    joinGameViaModal,
     requestGamesList,
     exitGame,
     startReadyCheck,

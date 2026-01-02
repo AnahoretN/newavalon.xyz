@@ -14,7 +14,13 @@ const computeStatusCounts = (statuses: any[]): Record<string, number> => {
   const availableStatuses = statuses.filter(s =>
     s.type !== 'Support' &&
           s.type !== 'Threat' &&
-          s.type !== 'LastPlayed',
+          s.type !== 'LastPlayed' &&
+          s.type !== 'REMOVE_COMMIT' &&
+          s.type !== 'RESET_DEPLOY' &&
+          s.type !== 'REDEPLOY' &&
+          s.type !== 'readyDeploy' &&
+          s.type !== 'readyCommit' &&
+          s.type !== 'readySetup',
   )
   return availableStatuses.reduce((acc, s) => {
     acc[s.type] = (acc[s.type] || 0) + 1

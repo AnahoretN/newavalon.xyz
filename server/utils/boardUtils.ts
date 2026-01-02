@@ -16,6 +16,19 @@ const HERO_MR_PEARL_ID = 'mrPearlDoF'
 const HERO_REVEREND_ID = 'reverendOfTheChoir'
 
 /**
+ * Optimized deep clone for board data structure.
+ * Much faster than JSON.parse(JSON.stringify()) for our specific use case.
+ */
+function cloneBoard(board: Board): Board {
+  // Use structuredClone if available (modern Node.js 17+)
+  if (typeof structuredClone !== 'undefined') {
+    return structuredClone(board)
+  }
+  // Fallback to JSON method
+  return JSON.parse(JSON.stringify(board))
+}
+
+/**
  * Creates an empty game board of the maximum possible size.
  * @returns {Board} An empty board.
  */
@@ -31,7 +44,7 @@ export const createInitialBoard = (): Board =>
  */
 export const recalculateBoardStatuses = (gameState: GameState): Board => {
   const { board, activeGridSize, players } = gameState
-  const newBoard = JSON.parse(JSON.stringify(board))
+  const newBoard = cloneBoard(board)
   const GRID_SIZE = newBoard.length
   const offset = Math.floor((GRID_SIZE - activeGridSize) / 2)
 
@@ -153,65 +166,105 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
     }
   }
 
-  // 3. Hero Passives (Reverend & Mr. Pearl)
-  // We iterate again to find Heroes and apply their effects to OTHERS.
+  // 3. Hero Passives (Reverend & Mr. Pearl) - Optimized version
+  // Collect hero positions first, then apply effects row/column by row/column
+  // to reduce redundant iterations
+
+  interface HeroPosition {
+    r: number
+    c: number
+    ownerId: number
+    baseId: string
+  }
+
+  const reverends: HeroPosition[] = []
+  const mrPearls: HeroPosition[] = []
+
+  // Single pass to collect hero positions
   for (let r = 0; r < GRID_SIZE; r++) {
     for (let c = 0; c < GRID_SIZE; c++) {
       const card = newBoard[r][c].card
-
-      // Stunned Heroes do not emit passive auras
       const isStunned = card?.statuses?.some((s: {type: string}) => s.type === 'Stun')
 
-      if (!card?.baseId || card.isFaceDown || card.ownerId === undefined || isStunned) {
-        continue
-      }
-
-      const cardBaseId = card.baseId
-      const ownerId = card.ownerId
-
-      // 3.1 Reverend of The Choir: Support to all own units in lines
-      if (cardBaseId === HERO_REVEREND_ID) {
-        // Row
-        for (let i = 0; i < GRID_SIZE; i++) {
-          const target = newBoard[r][i].card
-          if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-            if (!target.statuses) {
-              target.statuses = []
-            }
-            if (!target.statuses.some((s: {type: string}) => s.type === 'Support')) {
-              target.statuses.push({ type: 'Support', addedByPlayerId: ownerId })
-            }
-          }
+      if (card?.baseId && !card.isFaceDown && card.ownerId !== undefined && !isStunned) {
+        if (card.baseId === HERO_REVEREND_ID) {
+          reverends.push({ r, c, ownerId: card.ownerId, baseId: card.baseId })
+        } else if (card.baseId === HERO_MR_PEARL_ID) {
+          mrPearls.push({ r, c, ownerId: card.ownerId, baseId: card.baseId })
         }
-        // Col
-        for (let i = 0; i < GRID_SIZE; i++) {
-          const target = newBoard[i][c].card
-          if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-            if (!target.statuses) {
-              target.statuses = []
-            }
-            if (!target.statuses.some((s: {type: string}) => s.type === 'Support')) {
-              target.statuses.push({ type: 'Support', addedByPlayerId: ownerId })
-            }
+      }
+    }
+  }
+
+  // Apply Reverend Support effects - process each affected row/col only once
+  const processedRowsForReverend = new Set<string>()
+  const processedColsForReverend = new Set<string>()
+
+  for (const hero of reverends) {
+    const { r, c, ownerId } = hero
+
+    // Process row if not already processed for this player
+    const rowKey = `${r}-${ownerId}`
+    if (!processedRowsForReverend.has(rowKey)) {
+      processedRowsForReverend.add(rowKey)
+      for (let i = 0; i < GRID_SIZE; i++) {
+        const target = newBoard[r][i].card
+        if (target && target.ownerId === ownerId && !target.isFaceDown) {
+          if (!target.statuses) {
+            target.statuses = []
+          }
+          if (!target.statuses.some((s: {type: string}) => s.type === 'Support')) {
+            target.statuses.push({ type: 'Support', addedByPlayerId: ownerId })
           }
         }
       }
+    }
 
-      // 3.2 Mr. Pearl: +1 Power to other own units in lines
-      if (cardBaseId === HERO_MR_PEARL_ID) {
-        // Row
-        for (let i = 0; i < GRID_SIZE; i++) {
-          const target = newBoard[r][i].card
-          if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-            target.bonusPower = (target.bonusPower || 0) + 1
+    // Process column if not already processed for this player
+    const colKey = `${c}-${ownerId}`
+    if (!processedColsForReverend.has(colKey)) {
+      processedColsForReverend.add(colKey)
+      for (let i = 0; i < GRID_SIZE; i++) {
+        const target = newBoard[i][c].card
+        if (target && target.ownerId === ownerId && !target.isFaceDown) {
+          if (!target.statuses) {
+            target.statuses = []
+          }
+          if (!target.statuses.some((s: {type: string}) => s.type === 'Support')) {
+            target.statuses.push({ type: 'Support', addedByPlayerId: ownerId })
           }
         }
-        // Col
-        for (let i = 0; i < GRID_SIZE; i++) {
-          const target = newBoard[i][c].card
-          if (target && target.ownerId === ownerId && !target.isFaceDown && target.id !== card.id) {
-            target.bonusPower = (target.bonusPower || 0) + 1
-          }
+      }
+    }
+  }
+
+  // Apply Mr. Pearl bonus power effects - process each affected row/col only once
+  const processedRowsForPearl = new Set<string>()
+  const processedColsForPearl = new Set<string>()
+
+  for (const hero of mrPearls) {
+    const { r, c, ownerId } = hero
+
+    // Process row if not already processed for this player
+    const rowKey = `${r}-${ownerId}`
+    if (!processedRowsForPearl.has(rowKey)) {
+      processedRowsForPearl.add(rowKey)
+      for (let i = 0; i < GRID_SIZE; i++) {
+        const target = newBoard[r][i].card
+        if (target && target.ownerId === ownerId && !target.isFaceDown) {
+          target.bonusPower = (target.bonusPower || 0) + 1
+        }
+      }
+    }
+
+    // Process column if not already processed for this player
+    const colKey = `${c}-${ownerId}`
+    if (!processedColsForPearl.has(colKey)) {
+      processedColsForPearl.add(colKey)
+      for (let i = 0; i < GRID_SIZE; i++) {
+        const target = newBoard[i][c].card
+        if (target && target.ownerId === ownerId && !target.isFaceDown) {
+          target.bonusPower = (target.bonusPower || 0) + 1
         }
       }
     }

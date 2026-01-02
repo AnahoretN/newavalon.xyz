@@ -1,4 +1,4 @@
-import React, { memo, useRef, useState, useEffect } from 'react'
+import React, { memo, useRef, useState, useEffect, useMemo } from 'react'
 import { DeckType as DeckTypeEnum } from '@/types'
 import type { Player, PlayerColor, Card as CardType, DragItem, DropTarget, CustomDeckFile, ContextMenuParams } from '@/types'
 import { PLAYER_COLORS, GAME_ICONS } from '@/constants'
@@ -223,7 +223,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   const isDisconnected = !!player.isDisconnected
 
   const selectableDecks = getSelectableDecks()
-  const selectedColors = new Set(allPlayers.map(p => p.color))
+  const selectedColors = useMemo(() => new Set(allPlayers.map(p => p.color)), [allPlayers])
 
   const winCount = roundWinners ? Object.values(roundWinners).filter(winners => winners.includes(player.id)).length : 0
   const isFirstPlayer = startingPlayerId === player.id

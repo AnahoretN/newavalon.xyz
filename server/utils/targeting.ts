@@ -122,6 +122,7 @@ export const validateTarget = (
 
 /**
  * Helper to calculate valid targets for an ability action on the board.
+ * Optimized to iterate only over active grid bounds.
  */
 export const calculateValidTargets = (
   action: AbilityAction | null,
@@ -137,14 +138,13 @@ export const calculateValidTargets = (
   const board = currentGameState.board
   const gridSize = board.length
 
-  // Calculate visible boundaries
+  // Calculate visible boundaries - iterate ONLY over active grid area
   const activeSize = currentGameState.activeGridSize
   const offset = Math.floor((gridSize - activeSize) / 2)
   const minBound = offset
   const maxBound = offset + activeSize - 1
-  const isInBounds = (r: number, c: number) => r >= minBound && r <= maxBound && c >= minBound && c <= maxBound
 
-  // If action is CREATE_STACK, iterate entire board and check validity
+  // If action is CREATE_STACK, iterate only active grid area
   if (action.type === 'CREATE_STACK') {
     const constraints = {
       targetOwnerId: action.targetOwnerId,
@@ -160,12 +160,9 @@ export const calculateValidTargets = (
       tokenType: action.tokenType,
     }
 
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        // Skip cells that are out of visible grid bounds
-        if (!isInBounds(r, c)) {
-          continue
-        }
+    // Iterate ONLY over active grid bounds (not entire 7x7 board)
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const cell = board[r][c]
         if (cell.card && cell.card.ownerId !== undefined) { // Tokens generally apply to existing cards
           const isValid = validateTarget(
@@ -195,8 +192,9 @@ export const calculateValidTargets = (
       return []
     }
 
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const cell = board[r][c]
 
         // Check basic filter
@@ -219,8 +217,9 @@ export const calculateValidTargets = (
   }
   // 1.1 Enhanced Interrogation Generic Targeting (Any Unit)
   else if (mode === 'SELECT_TARGET' && (payload.actionType === 'ENHANCED_INT_REVEAL' || payload.actionType === 'ENHANCED_INT_MOVE')) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const cell = board[r][c]
         if (cell.card) {
           targets.push({ row: r, col: c })
@@ -229,9 +228,11 @@ export const calculateValidTargets = (
     }
   }
   // 2. Patrol Move (Empty cell in same row/col)
+  // Note: Patrol needs to check full rows/cols, but limited to active bounds
   else if (mode === 'PATROL_MOVE' && sourceCoords) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds (patrol can move within active area)
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         // Must be same row OR same col
         const isLine = (r === sourceCoords.row || c === sourceCoords.col)
         const isSame = (r === sourceCoords.row && c === sourceCoords.col)
@@ -253,9 +254,12 @@ export const calculateValidTargets = (
       { r: sourceCoords.row, c: sourceCoords.col + 1 },
     ]
 
+    // Helper to check if coords are in active bounds
+    const isInActiveBounds = (r: number, c: number) => r >= minBound && r <= maxBound && c >= minBound && c <= maxBound
+
     neighbors.forEach(nb => {
       // Check bounds (using visible grid bounds)
-      if (isInBounds(nb.r, nb.c)) {
+      if (isInActiveBounds(nb.r, nb.c)) {
         const targetCard = board[nb.r][nb.c].card
 
         // Check if opponent (Not Self AND Not Teammate)
@@ -272,7 +276,7 @@ export const calculateValidTargets = (
             const pushCol = nb.c + dCol
 
             // Check dest bounds and emptiness against VISIBLE grid
-            if (isInBounds(pushRow, pushCol)) {
+            if (isInActiveBounds(pushRow, pushCol)) {
               if (!board[pushRow][pushCol].card) {
                 targets.push({ row: nb.r, col: nb.c })
               }
@@ -292,8 +296,9 @@ export const calculateValidTargets = (
   }
   // 5. Swap Positions (Reckless Provocateur)
   else if (mode === 'SWAP_POSITIONS' && payload.filter) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const cell = board[r][c]
         if (cell.card && payload.filter(cell.card, r, c)) {
           targets.push({ row: r, col: c })
@@ -304,8 +309,9 @@ export const calculateValidTargets = (
   // 6. Transfer Status (Reckless Provocateur Commit)
   // Update to handle both single and ALL transfers
   else if ((mode === 'TRANSFER_STATUS_SELECT' || mode === 'TRANSFER_ALL_STATUSES') && payload.filter) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const cell = board[r][c]
         if (cell.card && payload.filter(cell.card, r, c)) {
           targets.push({ row: r, col: c })
@@ -316,8 +322,9 @@ export const calculateValidTargets = (
   // 7. Spawn Token / Select Cell
   else if ((mode === 'SPAWN_TOKEN' || mode === 'SELECT_CELL' || mode === 'IMMUNIS_RETRIEVE')) {
     // Note: IMMUNIS_RETRIEVE behaves like select cell when picking the destination
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const isEmpty = !board[r][c].card
 
         // If Immunis logic, we check filter (adjacency)
@@ -405,8 +412,9 @@ export const calculateValidTargets = (
   }
   // 8. Reveal Enemy (Recon Drone)
   else if (mode === 'REVEAL_ENEMY' && payload.filter) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         const cell = board[r][c]
         if (cell.card && payload.filter(cell.card, r, c)) {
           targets.push({ row: r, col: c })
@@ -414,64 +422,70 @@ export const calculateValidTargets = (
       }
     }
   }
-  // 9. Select Line Start (Any cell)
+  // 9. Select Line Start (Any cell in active grid)
   else if (mode === 'SELECT_LINE_START') {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
+    // Iterate ONLY over active grid bounds
+    for (let r = minBound; r <= maxBound; r++) {
+      for (let c = minBound; c <= maxBound; c++) {
         targets.push({ row: r, col: c })
       }
     }
   }
   // 10. Select Line End (Cells in same row/col)
   else if (mode === 'SELECT_LINE_END' && payload.firstCoords) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const isRow = r === payload.firstCoords.row
-        const isCol = c === payload.firstCoords.col
-        if (isRow || isCol) {
-          targets.push({ row: r, col: c })
-        }
-      }
+    // Check row and col of firstCoords - iterate only those within active bounds
+    const { row: firstRow, col: firstCol } = payload.firstCoords
+
+    // Add all cells in the same row (within active bounds)
+    for (let c = minBound; c <= maxBound; c++) {
+      targets.push({ row: firstRow, col: c })
+    }
+    // Add all cells in the same col (within active bounds)
+    for (let r = minBound; r <= maxBound; r++) {
+      targets.push({ row: r, col: firstCol })
     }
   }
   // 11. Integrator Line Select (Cells in same row/col as source)
   else if (mode === 'INTEGRATOR_LINE_SELECT' && sourceCoords) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const isRow = r === sourceCoords.row
-        const isCol = c === sourceCoords.col
-        if (isRow || isCol) {
-          targets.push({ row: r, col: c })
-        }
-      }
+    const { row: sourceRow, col: sourceCol } = sourceCoords
+
+    // Add all cells in the same row (within active bounds)
+    for (let c = minBound; c <= maxBound; c++) {
+      targets.push({ row: sourceRow, col: c })
+    }
+    // Add all cells in the same col (within active bounds)
+    for (let r = minBound; r <= maxBound; r++) {
+      targets.push({ row: r, col: sourceCol })
     }
   }
   // 11.5. Zius Line Select (same as Integrator, but uses different coords)
   else if (mode === 'ZIUS_LINE_SELECT' && sourceCoords) {
-    for (let r = 0; r < gridSize; r++) {
-      for (let c = 0; c < gridSize; c++) {
-        const isRow = r === sourceCoords.row
-        const isCol = c === sourceCoords.col
-        if (isRow || isCol) {
-          targets.push({ row: r, col: c })
-        }
-      }
+    const { row: sourceRow, col: sourceCol } = sourceCoords
+
+    // Add all cells in the same row (within active bounds)
+    for (let c = minBound; c <= maxBound; c++) {
+      targets.push({ row: sourceRow, col: c })
+    }
+    // Add all cells in the same col (within active bounds)
+    for (let r = minBound; r <= maxBound; r++) {
+      targets.push({ row: r, col: sourceCol })
     }
   }
   // 12. Select Diagonal
   else if (mode === 'SELECT_DIAGONAL') {
     if (!payload.firstCoords) {
-      // Step 1: Can start anywhere
-      for (let r = 0; r < gridSize; r++) {
-        for (let c = 0; c < gridSize; c++) {
+      // Step 1: Can start anywhere in active grid
+      for (let r = minBound; r <= maxBound; r++) {
+        for (let c = minBound; c <= maxBound; c++) {
           targets.push({ row: r, col: c })
         }
       }
     } else {
-      // Step 2: Highlight only diagonals from firstCoords
+      // Step 2: Highlight only diagonals from firstCoords (within active bounds)
       const { row: r1, col: c1 } = payload.firstCoords
-      for (let r = 0; r < gridSize; r++) {
-        for (let c = 0; c < gridSize; c++) {
+      // Calculate max diagonal distance from firstCoords to active bounds
+      for (let r = minBound; r <= maxBound; r++) {
+        for (let c = minBound; c <= maxBound; c++) {
           if (Math.abs(r - r1) === Math.abs(c - c1)) {
             targets.push({ row: r, col: c })
           }

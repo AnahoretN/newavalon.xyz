@@ -154,26 +154,19 @@ export function handleJoinGame(ws, data) {
       return;
     }
 
-    // Check if game has already started
-    if (gameState.isGameStarted) {
-      logger.warn(`Game ${gameId} has already started, sending ERROR to client`);
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'This game has already started.'
-      }));
-      return;
-    }
-
     // Store the game ID on the WebSocket connection
     ws.gameId = gameId;
     associateClientWithGame(ws, gameId);
 
-    // --- 1. Reconnection Logic ---
+    // --- 1. Reconnection Logic (must be checked BEFORE isGameStarted) ---
+    // Players with a valid playerToken can always reconnect, even if game started
+    // This handles F5 refresh, temporary network issues, and tab reopening
     if (playerToken) {
       const playerToReconnect = gameState.players.find(
-        p => p.playerToken === playerToken && p.isDisconnected
+        p => p.playerToken === playerToken
       );
       if (playerToReconnect) {
+        // Always allow reconnection with valid token
         playerToReconnect.isDisconnected = false;
         playerToReconnect.isDummy = false; // Restore as real player
         ws.playerId = playerToReconnect.id;
@@ -197,6 +190,16 @@ export function handleJoinGame(ws, data) {
         broadcastToGame(gameId, gameState);
         return;
       }
+    }
+
+    // Check if game has already started (only for NEW joins without valid token)
+    if (gameState.isGameStarted) {
+      logger.warn(`Game ${gameId} has already started, sending ERROR to client`);
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'This game has already started.'
+      }));
+      return;
     }
 
     // --- 2. Takeover "Ghost" Player Slot ---
