@@ -241,6 +241,9 @@ export interface TranslationResource {
     hiddenGame: string;
     copied: string;
     copyInviteLink: string;
+    inviteLinkDesc: string;
+    copyGameLink: string;
+    copyGameLinkDesc: string;
     reconnect: string;
   };
   rules: {

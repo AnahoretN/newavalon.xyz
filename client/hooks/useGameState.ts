@@ -43,6 +43,8 @@ const getWebSocketURL = () => {
 }
 
 export type ConnectionStatus = 'Connecting' | 'Connected' | 'Disconnected';
+export type ReconnectState = 'idle' | 'reconnecting' | 'failed'
+
 const generateGameId = () => Math.random().toString(36).substring(2, 18).toUpperCase()
 
 const syncLastPlayed = (board: Board, player: Player) => {
@@ -218,6 +220,18 @@ export const useGameState = () => {
   // Track when rawJsonData is loaded for syncing images
   const [contentLoaded, setContentLoaded] = useState(!!rawJsonData)
 
+  // Reconnection state - tracks if player was in a game when disconnected
+  const [reconnectState, setReconnectState] = useState<ReconnectState>('idle')
+  const [savedGameId, setSavedGameId] = useState<string | null>(null)
+  const reconnectAttemptCountRef = useRef(0)
+  const reconnectStateRef = useRef<ReconnectState>('idle')
+  const MAX_RECONNECT_ATTEMPTS = 20 // ~60 seconds (3s each)
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    reconnectStateRef.current = reconnectState
+  }, [reconnectState])
+
   const createDeck = useCallback((deckType: DeckType, playerId: number, playerName: string): Card[] => {
     const deck = decksData[deckType]
     if (!deck) {
@@ -366,6 +380,14 @@ export const useGameState = () => {
     ws.current.onopen = () => {
       logger.info('WebSocket connection established')
       setConnectionStatus('Connected')
+
+      // Reset reconnection state on successful connection
+      if (reconnectStateRef.current !== 'idle') {
+        setReconnectState('idle')
+        setSavedGameId(null)
+        reconnectAttemptCountRef.current = 0
+      }
+
       // Save the active WebSocket URL for link sharing
       const customUrl = localStorage.getItem('custom_ws_url')
       if (customUrl && customUrl.trim() !== '') {
@@ -505,9 +527,27 @@ export const useGameState = () => {
     ws.current.onclose = () => {
       logger.info('WebSocket connection closed')
       setConnectionStatus('Disconnected')
+
+      // Check if we were in a game when disconnected
+      const currentGameId = gameStateRef.current.gameId
+      const wasInGame = currentGameId && localPlayerIdRef.current !== null
+
+      if (wasInGame) {
+        setSavedGameId(currentGameId)
+        setReconnectState('reconnecting')
+        reconnectAttemptCountRef.current = 0
+      }
+
       if (!isManualExitRef.current) {
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current)
+        }
+        reconnectAttemptCountRef.current++
+        if (reconnectAttemptCountRef.current >= MAX_RECONNECT_ATTEMPTS) {
+          // Give up after max attempts
+          if (wasInGame) {
+            setReconnectState('failed')
+          }
         }
         reconnectTimeoutRef.current = window.setTimeout(connectWebSocket, 3000)
       }
@@ -2567,5 +2607,7 @@ export const useGameState = () => {
     reorderTopDeck,
     reorderCards,
     updateState,
+    reconnectState,
+    savedGameId,
   }
 }

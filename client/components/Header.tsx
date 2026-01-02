@@ -442,7 +442,7 @@ const Header = memo<HeaderProps>(({
   isPrivate,
   onPrivacyChange,
   isHost,
-  onSyncGame,
+  onSyncGame: _onSyncGame, // Currently unused in UI but may be needed later
   currentPhase,
   onNextPhase,
   onPrevPhase,

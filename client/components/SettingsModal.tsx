@@ -29,7 +29,7 @@ const getStatusColor = (status: ConnectionStatus): string => {
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
-  onSave,
+  onSave: _onSave, // Unused - save is handled internally
   connectionStatus,
   onReconnect,
   gameId = null,
@@ -41,15 +41,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [linkCopySuccess, setLinkCopySuccess] = useState(false)
   const [isReconnecting, setIsReconnecting] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
-  const [lastConnectedUrl, setLastConnectedUrl] = useState('')
 
   const isConnected = connectionStatus === 'Connected'
 
-  // Track when connection is established to update the "last connected" URL
+  // Track when connection is established to update unsaved changes
   useEffect(() => {
     if (isConnected) {
-      const activeUrl = localStorage.getItem('websocket_url') || ''
-      setLastConnectedUrl(activeUrl)
       // Only clear unsaved changes if the current URL matches what we're connected to
       const currentCustomUrl = localStorage.getItem('custom_ws_url') || ''
       if (serverUrl.trim() === currentCustomUrl) {
@@ -65,8 +62,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setLinkCopySuccess(false)
       setIsReconnecting(false)
       setHasUnsavedChanges(false)
-      const activeUrl = localStorage.getItem('websocket_url') || ''
-      setLastConnectedUrl(activeUrl)
     }
   }, [isOpen])
 

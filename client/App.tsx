@@ -15,6 +15,7 @@ import { MainMenu } from './components/MainMenu'
 import { RoundEndModal } from './components/RoundEndModal'
 import { CounterSelectionModal } from './components/CounterSelectionModal'
 import { TopDeckView } from './components/TopDeckView'
+import { ReconnectingOverlay } from './components/ReconnectingOverlay'
 import { useGameState } from './hooks/useGameState'
 import { useAppAbilities } from './hooks/useAppAbilities'
 import { useAppCommand } from './hooks/useAppCommand'
@@ -119,6 +120,7 @@ const App = memo(function App() {
     reorderTopDeck,
     reorderCards,
     triggerFloatingText,
+    reconnectState,
   } = gameStateHook
 
   const [modalsState, setModalsState] = useState({
@@ -553,8 +555,6 @@ const App = memo(function App() {
   // Load content database from server on mount
   useEffect(() => {
     let mounted = true
-    // Check if content was already loaded (from previous render in dev mode)
-    const initialKeys = Object.keys(countersDatabase)
 
     fetchContentDatabase().then(() => {
       // After loading, if counters are now available, trigger a re-render
@@ -1554,7 +1554,8 @@ const App = memo(function App() {
     }
   }, [modalsState.isCountersModalOpen])
 
-  if (!isGameActive) {
+  // Only show MainMenu if not in game AND not reconnecting to a game
+  if (!isGameActive && reconnectState === 'idle') {
     return (
       <MainMenu
         handleCreateGame={handleCreateGame}
@@ -1581,6 +1582,20 @@ const App = memo(function App() {
         isGameStarted={gameState.isGameStarted}
         isPrivate={gameState.isPrivate}
       />
+    )
+  }
+
+  // If reconnecting (was in game but lost connection), show overlay with minimal background
+  if (reconnectState === 'reconnecting' && !isGameActive) {
+    return (
+      <div className={`relative w-screen h-screen overflow-hidden ${cursorStack ? 'cursor-none' : ''}`}>
+        {/* Show a simplified dark background */}
+        <div className="absolute inset-0 bg-gray-900" />
+        <ReconnectingOverlay
+          isVisible={true}
+          connectionStatus={connectionStatus}
+        />
+      </div>
     )
   }
 
@@ -1932,6 +1947,12 @@ const App = memo(function App() {
           </div>
         </div>
       </div>
+
+      {/* Reconnection Overlay - shown when player was in game and lost connection */}
+      <ReconnectingOverlay
+        isVisible={reconnectState === 'reconnecting'}
+        connectionStatus={connectionStatus}
+      />
     </div>
   )
 })
