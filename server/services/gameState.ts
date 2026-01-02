@@ -69,6 +69,7 @@ export function createGameState(gameId: string, options: GameOptions = {}): Game
   const gameState: GameState = {
     id: gameId,
     players: [],
+    spectators: [],
     board: Array(8).fill(null).map(() => Array(8).fill(null)),
     isGameStarted: false,
     activePlayerId: null,

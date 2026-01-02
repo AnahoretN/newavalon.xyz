@@ -25,6 +25,8 @@ import {
   handleSubscribe,
   handleUpdateState,
   handleJoinGame,
+  handleJoinAsInvite,
+  handleSpectatorLeave,
   handleExitGame,
   handleForceSync
 } from '../handlers/gameManagement.js';
@@ -169,6 +171,8 @@ function routeMessage(ws, data) {
     'SUBSCRIBE': handleSubscribe,
     'CREATE_GAME': handleCreateGame,
     'JOIN_GAME': handleJoinGame,
+    'JOIN_AS_INVITE': handleJoinAsInvite,
+    'SPECTATOR_LEAVE': handleSpectatorLeave,
     'PLAY_CARD': handlePlayCard,
     'MOVE_CARD': handleMoveCard,
     'END_TURN': handleEndTurn,

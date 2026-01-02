@@ -364,3 +364,157 @@ export function handleForceSync(ws, data) {
     logger.error('Failed to force sync:', error);
   }
 }
+
+/**
+ * Handle JOIN_AS_INVITE message
+ * Handles player joining via invite link - joins as new player or spectator
+ */
+export function handleJoinAsInvite(ws: any, data: any) {
+  try {
+    const { gameId, playerName = 'Player' } = data;
+    logger.info(`JOIN_AS_INVITE request: gameId=${gameId}, playerName=${playerName}`);
+
+    const gameState = getGameState(gameId);
+
+    if (!gameState) {
+      logger.warn(`Game ${gameId} not found, sending ERROR to client`);
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: `Game with code ${gameId} not found.`
+      }));
+      return;
+    }
+
+    // Store the game ID on the WebSocket connection
+    ws.gameId = gameId;
+    associateClientWithGame(ws, gameId);
+
+    // Count active (non-dummy, non-disconnected) players
+    const activePlayers = gameState.players.filter(p => !p.isDummy && !p.isDisconnected && !p.isSpectator);
+    const playerCount = activePlayers.length;
+
+    logger.info(`Game ${gameId} has ${playerCount} active players (max: ${MAX_PLAYERS})`);
+
+    // If game has less than 4 active players, join as new player
+    if (playerCount < MAX_PLAYERS) {
+      // Check for disconnected slots to take over first
+      const playerToTakeOver = gameState.players.find(p => p.isDisconnected && !p.isSpectator);
+      if (playerToTakeOver) {
+        playerToTakeOver.isDisconnected = false;
+        playerToTakeOver.name = playerName;
+        playerToTakeOver.playerToken = generatePlayerToken();
+
+        // Cancel any game termination timer
+        cancelGameTermination(gameId, getAllGameLogs());
+
+        // Clear pending dummy conversion timer
+        const timerKey = `${gameId}-${playerToTakeOver.id}`;
+        if (playerDisconnectTimers.has(timerKey)) {
+          clearTimeout(playerDisconnectTimers.get(timerKey));
+          playerDisconnectTimers.delete(timerKey);
+        }
+
+        ws.playerId = playerToTakeOver.id;
+        ws.send(JSON.stringify({
+          type: 'JOIN_SUCCESS',
+          playerId: playerToTakeOver.id,
+          playerToken: playerToTakeOver.playerToken,
+          isSpectator: false
+        }));
+        logger.info(`Invite: Player took over slot ${playerToTakeOver.id} in game ${gameId}`);
+        broadcastToGame(gameId, gameState);
+        return;
+      }
+
+      // Find the next available player ID
+      const existingIds = new Set(gameState.players.filter(p => !p.isSpectator).map(p => p.id));
+      let newPlayerId = 1;
+      while (existingIds.has(newPlayerId)) {
+        newPlayerId++;
+      }
+
+      // Create new player with full deck
+      const newPlayer = createNewPlayer(newPlayerId);
+      newPlayer.name = playerName;
+
+      gameState.players.push(newPlayer);
+      gameState.players.sort((a, b) => a.id - b.id);
+
+      ws.playerId = newPlayerId;
+      ws.send(JSON.stringify({
+        type: 'JOIN_SUCCESS',
+        playerId: newPlayerId,
+        playerToken: newPlayer.playerToken,
+        isSpectator: false
+      }));
+      logger.info(`Invite: New player ${newPlayerId} (${newPlayer.name}) joined game ${gameId}`);
+      broadcastToGame(gameId, gameState);
+    } else {
+      // Game is full (4 players), join as spectator
+      const spectatorId = `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+      const spectator = {
+        id: spectatorId,
+        name: playerName,
+        connectedAt: Date.now()
+      };
+
+      // Initialize spectators array if needed
+      if (!gameState.spectators) {
+        gameState.spectators = [];
+      }
+      gameState.spectators.push(spectator);
+
+      ws.playerId = null; // Spectators have no player ID
+      ws.spectatorId = spectatorId;
+
+      ws.send(JSON.stringify({
+        type: 'JOIN_SUCCESS',
+        spectatorId: spectatorId,
+        isSpectator: true,
+        message: `Game is full. You joined as a spectator.`
+      }));
+      logger.info(`Invite: ${playerName} joined game ${gameId} as spectator (${gameState.spectators.length} spectators)`);
+      broadcastToGame(gameId, gameState);
+    }
+  } catch (error) {
+    logger.error('Failed to join as invite:', error);
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      message: 'Failed to join game'
+    }));
+  }
+}
+
+/**
+ * Handle SPECTATOR_LEAVE message
+ * Removes a spectator from the game
+ */
+export function handleSpectatorLeave(ws: any, data: any) {
+  try {
+    const gameId = getGameIdForClient(ws);
+    if (!gameId) {
+      return;
+    }
+
+    const gameState = getGameState(gameId);
+    if (!gameState) {
+      return;
+    }
+
+    const { spectatorId } = data;
+    if (!spectatorId) {
+      return;
+    }
+
+    // Remove spectator from the list
+    if (gameState.spectators) {
+      gameState.spectators = gameState.spectators.filter((s: any) => s.id !== spectatorId);
+      logger.info(`Spectator ${spectatorId} left game ${gameId} (${gameState.spectators.length} spectators remaining)`);
+      broadcastToGame(gameId, gameState);
+    }
+
+    removeClientAssociation(ws);
+  } catch (error) {
+    logger.error('Failed to handle spectator leave:', error);
+  }
+}

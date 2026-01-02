@@ -85,6 +85,15 @@ export interface Card {
 }
 
 /**
+ * Represents a spectator in the game.
+ */
+export interface Spectator {
+  id: string; // Unique spectator ID (UUID)
+  name: string;
+  connectedAt: number; // Timestamp when they joined as spectator
+}
+
+/**
  * Represents a player in the game.
  */
 export interface Player {
@@ -104,6 +113,7 @@ export interface Player {
   teamId?: number; // The team this player belongs to.
   boardHistory: string[]; // Stack of card IDs currently on the board, used to track 'LastPlayed' status fallback.
   autoDrawEnabled?: boolean; // Whether this player has auto-draw enabled.
+  isSpectator?: boolean; // True if this "player" is actually a spectator in the players array.
 }
 
 /**
@@ -170,6 +180,7 @@ export interface FloatingTextData {
  */
 export interface GameState {
   players: Player[];
+  spectators: Spectator[]; // List of spectators watching the game
   board: Board;
   activeGridSize: GridSize;
   gameId: string | null;
@@ -196,6 +207,10 @@ export interface GameState {
   roundWinners: Record<number, number[]>; // Map of Round Number -> Winner Player IDs
   gameWinner: number | null; // Player ID if game is over
   isRoundEndModalOpen: boolean; // Controls visibility of inter-round modal
+
+  // Local spectator state (not synced with server)
+  localPlayerId: number | null; // The player ID of the local client (null if spectator)
+  isSpectator: boolean; // True if the local client is a spectator
 }
 
 /**

@@ -262,6 +262,7 @@ export const useGameState = () => {
 
   const createInitialState = useCallback((): GameState => ({
     players: [],
+    spectators: [],
     board: createInitialBoard(),
     activeGridSize: 7,
     gameId: null,
@@ -284,6 +285,8 @@ export const useGameState = () => {
     roundWinners: {},
     gameWinner: null,
     isRoundEndModalOpen: false,
+    localPlayerId: null,
+    isSpectator: false,
   }), [])
 
   const [gameState, setGameState] = useState<GameState>(createInitialState)
@@ -417,6 +420,15 @@ export const useGameState = () => {
         if (data.type === 'GAMES_LIST') {
           setGamesList(data.games)
         } else if (data.type === 'JOIN_SUCCESS') {
+          // Handle spectator mode
+          if (data.isSpectator) {
+            setLocalPlayerId(null)
+            logger.info('Joined as spectator:', data.message || 'Spectator mode')
+            joiningGameIdRef.current = null
+            return
+          }
+
+          // Regular player join
           setLocalPlayerId(data.playerId)
           const gameId = joiningGameIdRef.current || gameStateRef.current.gameId
           if (gameId && data.playerId !== null && data.playerToken) {
@@ -448,6 +460,20 @@ export const useGameState = () => {
         } else if (data.type === 'CONNECTION_ESTABLISHED') {
           // Server acknowledging connection - no action needed
           logger.info('Connection acknowledged by server')
+
+          // Check for pending invite join
+          const pendingInviteGame = sessionStorage.getItem('pending_invite_game')
+          const pendingInviteName = sessionStorage.getItem('pending_invite_name')
+          if (pendingInviteGame && ws.current) {
+            sessionStorage.removeItem('pending_invite_game')
+            sessionStorage.removeItem('pending_invite_name')
+            logger.info('Auto-joining invite game:', pendingInviteGame)
+            ws.current.send(JSON.stringify({
+              type: 'JOIN_AS_INVITE',
+              gameId: pendingInviteGame,
+              playerName: pendingInviteName || 'Player'
+            }))
+          }
         } else if (data.type === 'DECK_DATA_UPDATED') {
           // Deck data synced with server - no action needed
           logger.info('Deck data synced with server')
@@ -579,6 +605,23 @@ export const useGameState = () => {
     isJoinAttemptRef.current = true
     joinGame(gameId)
   }, [joinGame])
+
+  // Join as invite - automatically joins as new player or spectator
+  const joinAsInvite = useCallback((gameId: string, playerName: string = 'Player'): void => {
+    isManualExitRef.current = false
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: 'JOIN_AS_INVITE',
+        gameId,
+        playerName
+      }))
+    } else {
+      // Store for after connection
+      sessionStorage.setItem('pending_invite_game', gameId)
+      sessionStorage.setItem('pending_invite_name', playerName)
+      connectWebSocket()
+    }
+  }, [connectWebSocket])
 
   useEffect(() => {
     isManualExitRef.current = false
@@ -2538,6 +2581,7 @@ export const useGameState = () => {
     createGame,
     joinGame,
     joinGameViaModal,
+    joinAsInvite,
     requestGamesList,
     exitGame,
     startReadyCheck,

@@ -52,6 +52,7 @@ const App = memo(function App() {
     setLocalPlayerId,
     createGame,
     joinGameViaModal,
+    joinAsInvite,
     startReadyCheck,
     cancelReadyCheck,
     playerReady,
@@ -1075,17 +1076,20 @@ const App = memo(function App() {
     setModalsState(prev => ({ ...prev, isSettingsModalOpen: false }))
   }, [forceReconnect])
 
-  // Handle invite link - auto-join game
+  // Handle invite link - auto-join game as new player or spectator
   useEffect(() => {
     const inviteGameId = sessionStorage.getItem('invite_game_id')
     if (inviteGameId && !gameState.gameId && connectionStatus === 'Connected') {
       console.log('[App] Auto-joining game from invite link:', inviteGameId)
       // Clear the stored invite ID so we don't try again
       sessionStorage.removeItem('invite_game_id')
-      // Join the game using handleJoinGame
-      handleJoinGame(inviteGameId)
+      sessionStorage.removeItem('invite_auto_join')
+      // Generate a player name for the invite join
+      const playerName = `Player ${Math.floor(Math.random() * 1000)}`
+      // Join using joinAsInvite (handles new player or spectator)
+      joinAsInvite(inviteGameId, playerName)
     }
-  }, [connectionStatus, gameState.gameId, handleJoinGame])
+  }, [connectionStatus, gameState.gameId, joinAsInvite])
 
   const handleSyncAndRefresh = useCallback(() => {
     const newVersion = Date.now()
