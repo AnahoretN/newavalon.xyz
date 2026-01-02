@@ -6,10 +6,13 @@ import App from './App'
 import { LanguageProvider } from './contexts/LanguageContext'
 
 // Parse URL parameters for invite links
+// Support both query parameters (?game=...) and hash parameters (#game=...)
 const urlParams = new URLSearchParams(window.location.search)
-const inviteGameId = urlParams.get('game')
-const inviteServerUrl = urlParams.get('server')
-const encodedServerUrl = urlParams.get('s')
+const hashParams = new URLSearchParams(window.location.hash.slice(1))
+
+const inviteGameId = urlParams.get('game') || hashParams.get('game')
+const inviteServerUrl = urlParams.get('server') || hashParams.get('server')
+const encodedServerUrl = urlParams.get('s') || hashParams.get('s')
 
 // Store invite data in sessionStorage for App to use
 if (inviteGameId) {

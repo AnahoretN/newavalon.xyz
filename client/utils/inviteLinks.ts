@@ -20,6 +20,8 @@ export interface InviteLinkResult {
  * - Lobby (gameId exists, !isGameStarted): Share server + game invite
  * - In game (isGameStarted): Share server + game invite (for spectator or late join)
  *
+ * Uses hash parameters (#game=...&s=...) for GitHub Pages compatibility
+ *
  * @param gameId - Current game ID (null if not in a game)
  * @param isGameStarted - Whether the game has started
  * @param isPrivate - Whether the game is private (affects link description)
@@ -31,7 +33,8 @@ export function generateInviteLink(
   isPrivate: boolean = false
 ): InviteLinkResult {
   // Get the game site URL (where the game is hosted)
-  const baseUrl = window.location.origin
+  // Include pathname for GitHub Pages (e.g., /newavalon-skirmish/)
+  const baseUrl = window.location.origin + window.location.pathname
 
   // Get the WebSocket server URL we're connected to
   const wsUrl = localStorage.getItem('websocket_url') || ''
@@ -45,7 +48,7 @@ export function generateInviteLink(
   if (!gameId) {
     // Main menu - only share server config
     const inviteLink = encodedServerUrl
-      ? `${baseUrl}?s=${encodedServerUrl}`
+      ? `${baseUrl}#s=${encodedServerUrl}`
       : baseUrl
 
     return {
@@ -57,10 +60,10 @@ export function generateInviteLink(
     }
   }
 
-  // In a game (lobby or playing)
+  // In a game (lobby or playing) - use hash parameters for GitHub Pages
   const inviteLink = encodedServerUrl
-    ? `${baseUrl}?game=${gameId}&s=${encodedServerUrl}`
-    : `${baseUrl}?game=${gameId}`
+    ? `${baseUrl}#game=${gameId}&s=${encodedServerUrl}`
+    : `${baseUrl}#game=${gameId}`
 
   if (isGameStarted) {
     return {
