@@ -567,7 +567,8 @@ export const useAppAbilities = ({
       }
 
       // If this is a SELECT_CELL mode (Move), check if we should use the card from context (False Orders case)
-      if (action.mode === 'SELECT_CELL' && commandContext.lastMovedCardCoords && commandContext.lastMovedCardId) {
+      // Only apply if the action explicitly requests context usage via useContextCard flag
+      if (action.mode === 'SELECT_CELL' && commandContext.lastMovedCardCoords && commandContext.lastMovedCardId && action.payload?.useContextCard) {
         const { row, col } = commandContext.lastMovedCardCoords
         const contextCard = gameState.board[row][col].card
         if (contextCard) {

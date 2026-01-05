@@ -193,6 +193,7 @@ export const getCommandAction = (
         recordContext: true,
         payload: {
           range: 2,
+          useContextCard: true, // Use the card from commandContext.lastMovedCardCoords
           chainedAction: {
             type: 'CREATE_STACK',
             tokenType: 'Revealed',
@@ -213,6 +214,7 @@ export const getCommandAction = (
         recordContext: true,
         payload: {
           range: 2,
+          useContextCard: true, // Use the card from commandContext.lastMovedCardCoords
           chainedAction: {
             type: 'GLOBAL_AUTO_APPLY',
             payload: {
@@ -338,7 +340,7 @@ export const getCommandAction = (
         chainedAction: {
           type: 'ENTER_MODE',
           mode: 'SELECT_CELL',
-          payload: { range: 2 }, // App.tsx will inject sourceCard from commandContext
+          payload: { range: 2, useContextCard: true }, // App.tsx will inject sourceCard from commandContext
         },
       })
     }

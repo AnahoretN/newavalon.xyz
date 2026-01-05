@@ -911,7 +911,9 @@ const App = memo(function App() {
       // Context Injection Logic for Multi-Step Commands (False Orders / Tactical Maneuver)
       const actionToProcess = { ...nextAction }
 
-      if (actionToProcess.mode === 'SELECT_CELL' && commandContext.lastMovedCardCoords) {
+      // Only use commandContext if the action explicitly requests it (via useContextCard flag)
+      // This prevents actions like Recon Drone's Setup from incorrectly targeting the wrong card
+      if (actionToProcess.mode === 'SELECT_CELL' && commandContext.lastMovedCardCoords && actionToProcess.payload?.useContextCard) {
         const { row, col } = commandContext.lastMovedCardCoords
         // Add bounds/null checks before accessing the board
         if (
