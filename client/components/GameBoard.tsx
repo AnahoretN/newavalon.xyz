@@ -29,6 +29,7 @@ interface GameBoardProps {
   disableActiveHighlights?: boolean;
   preserveDeployAbilities?: boolean;
   activeFloatingTexts?: FloatingTextData[];
+  highlights?: HighlightData[];
   abilitySourceCoords?: { row: number, col: number } | null;
   abilityCheckKey?: number;
 }
@@ -60,13 +61,14 @@ const GridCell = memo<{
   preserveDeployAbilities?: boolean;
   abilitySourceCoords?: { row: number, col: number } | null;
   abilityCheckKey?: number;
+  cellHighlights?: HighlightData[];
     }>(({
       row, col, cell, isGameStarted, handleDrop, draggedItem, setDraggedItem,
       openContextMenu, playMode, setPlayMode, playerColorMap, localPlayerId,
       onCardDoubleClick, onEmptyCellDoubleClick, imageRefreshVersion, cursorStack,
       currentPhase, activePlayerId, onCardClick, onEmptyCellClick,
       isValidTarget, showNoTarget, disableActiveHighlights, preserveDeployAbilities,
-      abilitySourceCoords, abilityCheckKey,
+      abilitySourceCoords, abilityCheckKey, cellHighlights = [],
     }) => {
       const [isOver, setIsOver] = useState(false)
 
@@ -196,6 +198,24 @@ const GridCell = memo<{
             </div>
           )}
 
+          {/* Highlights from gameState - visible to all players with owner's color */}
+          {cellHighlights.filter(h => h.type === 'cell' && h.row === row && h.col === col).map((highlight, idx) => {
+            const highlightPlayerColor = playerColorMap.get(highlight.playerId)
+            // If it's local player's highlight, use blue. Otherwise use owner's color.
+            const isLocalPlayer = highlight.playerId === localPlayerId
+            const colorClass = isLocalPlayer
+              ? 'ring-blue-400 shadow-[0_0_15px_#60a5fa]'
+              : (highlightPlayerColor ? PLAYER_COLORS[highlightPlayerColor]?.glow || 'ring-cyan-400 shadow-[0_0_15px_#22d3ee]' : 'ring-cyan-400 shadow-[0_0_15px_#22d3ee]')
+
+            return (
+              <div
+                key={`highlight-${idx}-${highlight.timestamp}`}
+                className={`absolute inset-0 rounded-lg pointer-events-none z-10 ${colorClass.replace('shadow-', 'ring-4 ring-opacity-70 ')}`}
+                style={{ animation: 'pulse 1s ease-in-out infinite' }}
+              />
+            )
+          })}
+
           {cell.card && (
             <div
               key={cell.card.id}
@@ -279,6 +299,7 @@ export const GameBoard = memo<GameBoardProps>(({
   disableActiveHighlights,
   preserveDeployAbilities = false,
   activeFloatingTexts,
+  highlights,
   abilitySourceCoords = null,
   abilityCheckKey,
 }) => {
@@ -362,10 +383,11 @@ export const GameBoard = memo<GameBoardProps>(({
           isValidTarget: validTargetsSet.has(cellKey),
           isNoTarget: noTargetOverlay?.row === originalRowIndex && noTargetOverlay.col === originalColIndex,
           cellFloatingTexts: activeFloatingTexts?.filter(t => t.row === originalRowIndex && t.col === originalColIndex) || [],
+          cellHighlights: highlights?.filter(h => h.type === 'cell' && h.row === originalRowIndex && h.col === originalColIndex) || [],
         }
       }),
     )
-  }, [activeBoard, board.length, activeGridSize, validTargets, noTargetOverlay, activeFloatingTexts])
+  }, [activeBoard, board.length, activeGridSize, validTargets, noTargetOverlay, activeFloatingTexts, highlights])
 
   return (
     <div className="relative p-2 bg-board-bg rounded-xl h-full aspect-square transition-all duration-300">
@@ -373,7 +395,7 @@ export const GameBoard = memo<GameBoardProps>(({
         {processedCells.map((rowCells) =>
           rowCells.map(({
             cellKey, originalRowIndex, originalColIndex, cell, isValidTarget,
-            isNoTarget, cellFloatingTexts,
+            isNoTarget, cellFloatingTexts, cellHighlights,
           }) => (
             <div key={cellKey} className="relative w-full h-full">
               <GridCell
@@ -403,6 +425,7 @@ export const GameBoard = memo<GameBoardProps>(({
                 preserveDeployAbilities={preserveDeployAbilities}
                 abilitySourceCoords={abilitySourceCoords}
                 abilityCheckKey={abilityCheckKey}
+                cellHighlights={cellHighlights}
               />
               {cellFloatingTexts.map(ft => (
                 <FloatingTextOverlay

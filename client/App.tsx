@@ -1932,6 +1932,7 @@ const App = memo(function App() {
               disableActiveHighlights={isTargetingMode}
               preserveDeployAbilities={justAutoTransitioned}
               activeFloatingTexts={activeFloatingTexts}
+              highlights={gameState.highlights}
               abilitySourceCoords={abilityMode?.sourceCoords || null}
               abilityCheckKey={abilityCheckKey}
             />

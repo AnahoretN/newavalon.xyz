@@ -286,6 +286,8 @@ export const useGameState = () => {
     roundWinners: {},
     gameWinner: null,
     isRoundEndModalOpen: false,
+    floatingTexts: [],
+    highlights: [],
     localPlayerId: null,
     isSpectator: false,
   }), [])
@@ -316,6 +318,23 @@ export const useGameState = () => {
   useEffect(() => {
     localPlayerIdRef.current = localPlayerId
   }, [localPlayerId])
+
+  // Auto-cleanup old visual effects (highlights and floating texts)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setGameState(prev => {
+        const now = Date.now()
+        const filteredHighlights = prev.highlights.filter(h => now - h.timestamp < 2000)
+        const filteredFloatingTexts = prev.floatingTexts.filter(t => now - t.timestamp < 2000)
+
+        if (filteredHighlights.length !== prev.highlights.length || filteredFloatingTexts.length !== prev.floatingTexts.length) {
+          return { ...prev, highlights: filteredHighlights, floatingTexts: filteredFloatingTexts }
+        }
+        return prev
+      })
+    }, 500)
+    return () => clearInterval(interval)
+  }, [])
 
   /**
    * updateState - Low-level API to update game state and synchronize with server
@@ -529,13 +548,25 @@ export const useGameState = () => {
             console.warn('Server Error:', data.message)
           }
         } else if (data.type === 'HIGHLIGHT_TRIGGERED') {
-          setLatestHighlight(data.highlightData)
+          // Add highlight to gameState for all players to see
+          setGameState(prev => ({
+            ...prev,
+            highlights: [...prev.highlights, data.highlightData].filter(h => Date.now() - h.timestamp < 2000)
+          }))
         } else if (data.type === 'NO_TARGET_TRIGGERED') {
           setLatestNoTarget({ coords: data.coords, timestamp: data.timestamp })
         } else if (data.type === 'FLOATING_TEXT_TRIGGERED') {
-          setLatestFloatingTexts([data.floatingTextData])
+          // Add floating text to gameState for all players to see
+          setGameState(prev => ({
+            ...prev,
+            floatingTexts: [...prev.floatingTexts, data.floatingTextData].filter(t => Date.now() - t.timestamp < 2000)
+          }))
         } else if (data.type === 'FLOATING_TEXT_BATCH_TRIGGERED') {
-          setLatestFloatingTexts(data.batch)
+          // Add multiple floating texts to gameState
+          setGameState(prev => ({
+            ...prev,
+            floatingTexts: [...prev.floatingTexts, ...data.batch].filter(t => Date.now() - t.timestamp < 2000)
+          }))
         } else if (!data.type && data.players && data.board) {
           // Only update gameState if it's a valid game state (no type, but has required properties)
           // Sync card images from database (important for tokens after reconnection)
@@ -928,6 +959,8 @@ export const useGameState = () => {
         roundWinners: {},
         gameWinner: null,
         isRoundEndModalOpen: false,
+        floatingTexts: [],
+        highlights: [],
       }
     })
   }, [updateState, createDeck])

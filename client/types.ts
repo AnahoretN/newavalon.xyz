@@ -211,6 +211,10 @@ export interface GameState {
   gameWinner: number | null; // Player ID if game is over
   isRoundEndModalOpen: boolean; // Controls visibility of inter-round modal
 
+  // Visual effects (synced across all clients)
+  floatingTexts: FloatingTextData[]; // Array of floating texts to display
+  highlights: HighlightData[]; // Array of cell highlights to display
+
   // Local spectator state (not synced with server)
   localPlayerId: number | null; // The player ID of the local client (null if spectator)
   isSpectator: boolean; // True if the local client is a spectator

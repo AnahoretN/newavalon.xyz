@@ -1319,31 +1319,52 @@ export const useAppAbilities = ({
         }
 
         const gridSize = gameState.board.length
-        let exploits = 0
+        let totalExploits = 0
+        const floatingTextBatch: Array<{ row: number, col: number, text: string, playerId: number, timestamp: number }> = []
+
         if (boardCoords.row === sourceCoords.row) {
+          // Horizontal line
           for (let c = 0; c < gridSize; c++) {
             const cell = gameState.board[boardCoords.row][c]
             if (cell.card) {
-              exploits += cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+              const cardExploits = cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+              if (cardExploits > 0) {
+                totalExploits += cardExploits
+                // Show floating text over each card with exploits
+                floatingTextBatch.push({
+                  row: boardCoords.row,
+                  col: c,
+                  text: `+${cardExploits}`,
+                  playerId: actorId!,
+                  timestamp: Date.now(),
+                })
+              }
             }
           }
         } else {
+          // Vertical line
           for (let r = 0; r < gridSize; r++) {
             const cell = gameState.board[r][boardCoords.col]
             if (cell.card) {
-              exploits += cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+              const cardExploits = cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+              if (cardExploits > 0) {
+                totalExploits += cardExploits
+                floatingTextBatch.push({
+                  row: r,
+                  col: boardCoords.col,
+                  text: `+${cardExploits}`,
+                  playerId: actorId!,
+                  timestamp: Date.now(),
+                })
+              }
             }
           }
         }
 
-        if (exploits > 0) {
-          triggerFloatingText({
-            row: sourceCoords.row,
-            col: sourceCoords.col,
-            text: `+${exploits}`,
-            playerId: actorId!,
-          })
-          updatePlayerScore(actorId!, exploits)
+        if (totalExploits > 0) {
+          // Send all floating texts as a batch
+          triggerFloatingText(floatingTextBatch)
+          updatePlayerScore(actorId!, totalExploits)
         }
         markAbilityUsed(sourceCoords, isDeployAbility)
         setTimeout(() => setAbilityMode(null), 100)
@@ -1595,31 +1616,51 @@ export const useAppAbilities = ({
       }
 
       const gridSize = gameState.board.length
-      let exploits = 0
+      let totalExploits = 0
+      const floatingTextBatch: Array<{ row: number, col: number, text: string, playerId: number, timestamp: number }> = []
+
       if (boardCoords.row === sourceCoords.row) {
+        // Horizontal line
         for (let c = 0; c < gridSize; c++) {
           const cell = gameState.board[boardCoords.row][c]
           if (cell.card) {
-            exploits += cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+            const cardExploits = cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+            if (cardExploits > 0) {
+              totalExploits += cardExploits
+              floatingTextBatch.push({
+                row: boardCoords.row,
+                col: c,
+                text: `+${cardExploits}`,
+                playerId: actorId!,
+                timestamp: Date.now(),
+              })
+            }
           }
         }
       } else {
+        // Vertical line
         for (let r = 0; r < gridSize; r++) {
           const cell = gameState.board[r][boardCoords.col]
           if (cell.card) {
-            exploits += cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+            const cardExploits = cell.card.statuses?.filter(s => s.type === 'Exploit' && s.addedByPlayerId === actorId).length || 0
+            if (cardExploits > 0) {
+              totalExploits += cardExploits
+              floatingTextBatch.push({
+                row: r,
+                col: boardCoords.col,
+                text: `+${cardExploits}`,
+                playerId: actorId!,
+                timestamp: Date.now(),
+              })
+            }
           }
         }
       }
 
-      if (exploits > 0) {
-        triggerFloatingText({
-          row: sourceCoords.row,
-          col: sourceCoords.col,
-          text: `+${exploits}`,
-          playerId: actorId!,
-        })
-        updatePlayerScore(actorId!, exploits)
+      if (totalExploits > 0) {
+        // Send all floating texts as a batch
+        triggerFloatingText(floatingTextBatch)
+        updatePlayerScore(actorId!, totalExploits)
       }
       markAbilityUsed(sourceCoords, isDeployAbility)
       setTimeout(() => setAbilityMode(null), 100)
