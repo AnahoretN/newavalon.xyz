@@ -265,6 +265,10 @@ export const useAppCounters = ({
                   if (chained.type === 'GLOBAL_AUTO_APPLY') {
                     chained.sourceCoords = { row, col }
                   }
+                  // ZIUS_LINE_SELECT: use target card coords as anchor point (where Exploit was placed)
+                  if (chained.mode === 'ZIUS_LINE_SELECT') {
+                    chained.sourceCoords = { row, col }
+                  }
                 }
                 onAction(chained, cursorStack.sourceCoords || { row: -1, col: -1 })
               }
