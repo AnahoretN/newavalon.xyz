@@ -322,19 +322,17 @@ export const useGameState = () => {
     localPlayerIdRef.current = localPlayerId
   }, [localPlayerId])
 
-  // Auto-cleanup old visual effects (highlights and floating texts)
+  // Auto-cleanup old floating texts (highlights persist while ability mode is active)
   useEffect(() => {
     const interval = setInterval(() => {
       setGameState(prev => {
         const now = Date.now()
         // Ensure arrays exist (for backwards compatibility with old saved states)
-        const prevHighlights = prev.highlights || []
         const prevFloatingTexts = prev.floatingTexts || []
-        const filteredHighlights = prevHighlights.filter(h => now - h.timestamp < 2000)
-        const filteredFloatingTexts = prevFloatingTexts.filter(t => now - t.timestamp < 2000)
+        const filteredFloatingTexts = prevFloatingTexts.filter(t => now - t.timestamp < 10000)
 
-        if (filteredHighlights.length !== prevHighlights.length || filteredFloatingTexts.length !== prevFloatingTexts.length) {
-          return { ...prev, highlights: filteredHighlights, floatingTexts: filteredFloatingTexts }
+        if (filteredFloatingTexts.length !== prevFloatingTexts.length) {
+          return { ...prev, floatingTexts: filteredFloatingTexts }
         }
         return prev
       })
@@ -554,25 +552,29 @@ export const useGameState = () => {
             console.warn('Server Error:', data.message)
           }
         } else if (data.type === 'HIGHLIGHT_TRIGGERED') {
-          // Add highlight to gameState for all players to see
-          setGameState(prev => ({
-            ...prev,
-            highlights: [...prev.highlights, data.highlightData].filter(h => Date.now() - h.timestamp < 2000)
-          }))
+          // Legacy handler - not used anymore, highlights are synced via gameState.highlights array
+          // This can be removed once all clients are updated
+          console.log('[Highlight] Received legacy HIGHLIGHT_TRIGGERED (deprecated):', data.highlightData)
         } else if (data.type === 'NO_TARGET_TRIGGERED') {
           setLatestNoTarget({ coords: data.coords, timestamp: data.timestamp })
         } else if (data.type === 'FLOATING_TEXT_TRIGGERED') {
           // Add floating text to gameState for all players to see
           setGameState(prev => ({
             ...prev,
-            floatingTexts: [...prev.floatingTexts, data.floatingTextData].filter(t => Date.now() - t.timestamp < 2000)
+            floatingTexts: [...prev.floatingTexts, data.floatingTextData].filter(t => Date.now() - t.timestamp < 10000)
           }))
         } else if (data.type === 'FLOATING_TEXT_BATCH_TRIGGERED') {
           // Add multiple floating texts to gameState
           setGameState(prev => ({
             ...prev,
-            floatingTexts: [...prev.floatingTexts, ...data.batch].filter(t => Date.now() - t.timestamp < 2000)
+            floatingTexts: [...prev.floatingTexts, ...data.batch].filter(t => Date.now() - t.timestamp < 10000)
           }))
+        } else if (data.type === 'SYNC_HIGHLIGHTS') {
+          // Receive highlights from other players
+          // Ignore highlights from ourselves to avoid overwriting our local state
+          if (data.playerId !== localPlayerIdRef.current) {
+            window.dispatchEvent(new CustomEvent('syncHighlights', { detail: data.highlights }))
+          }
         } else if (!data.type && data.players && data.board) {
           // Only update gameState if it's a valid game state (no type, but has required properties)
           // Sync card images from database (important for tokens after reconnection)
@@ -1025,7 +1027,7 @@ export const useGameState = () => {
           }
         }
 
-        if (['Support', 'Threat', 'Revealed'].includes(status)) {
+        if (['Support', 'Threat', 'Revealed', 'Shield'].includes(status)) {
           const alreadyHasStatusFromPlayer = card.statuses?.some(s => s.type === status && s.addedByPlayerId === addedByPlayerId)
           if (alreadyHasStatusFromPlayer) {
             return currentState
@@ -1160,7 +1162,7 @@ export const useGameState = () => {
       const player = newState.players.find(p => p.id === playerId)
       if (player?.hand[cardIndex]) {
         const card = player.hand[cardIndex]
-        if (['Support', 'Threat', 'Revealed'].includes(status)) {
+        if (['Support', 'Threat', 'Revealed', 'Shield'].includes(status)) {
           const alreadyHasStatusFromPlayer = card.statuses?.some(s => s.type === status && s.addedByPlayerId === addedByPlayerId)
           if (alreadyHasStatusFromPlayer) {
             return currentState
@@ -1958,19 +1960,73 @@ export const useGameState = () => {
       if (item.source === 'hand' && item.playerId !== undefined && item.cardIndex !== undefined) {
         const player = newState.players.find(p => p.id === item.playerId)
         if (player) {
-          player.hand.splice(item.cardIndex, 1)
+          // IMPORTANT: Verify the card at the index matches the expected ID
+          // This prevents duplicate removals when multiple players target the same card
+          const cardAtIndex = player.hand[item.cardIndex]
+          if (cardAtIndex && cardAtIndex.id === item.card.id) {
+            player.hand.splice(item.cardIndex, 1)
+          } else {
+            // Card at index doesn't match expected ID - it was likely already removed by another player
+            // Try to find and remove the card by ID instead
+            const actualIndex = player.hand.findIndex(c => c.id === item.card.id)
+            if (actualIndex !== -1) {
+              player.hand.splice(actualIndex, 1)
+            } else {
+              // Card not found - already removed, skip this move entirely
+              return currentState
+            }
+          }
         }
       } else if (item.source === 'board' && item.boardCoords) {
-        newState.board[item.boardCoords.row][item.boardCoords.col].card = null
+        // IMPORTANT: Verify the card at the coords matches the expected ID
+        // This prevents duplicate removals when multiple players target the same card
+        const cell = newState.board[item.boardCoords.row][item.boardCoords.col]
+        if (cell.card && cell.card.id === item.card.id) {
+          newState.board[item.boardCoords.row][item.boardCoords.col].card = null
+        } else {
+          // Card at coords doesn't match expected ID - it was likely already removed/moved by another player
+          // Skip this move entirely to avoid ghost duplications
+          return currentState
+        }
       } else if (item.source === 'discard' && item.playerId !== undefined && item.cardIndex !== undefined) {
         const player = newState.players.find(p => p.id === item.playerId)
         if (player) {
-          player.discard.splice(item.cardIndex, 1)
+          // IMPORTANT: Verify the card at the index matches the expected ID
+          // This prevents duplicate removals when multiple players target the same card
+          const cardAtIndex = player.discard[item.cardIndex]
+          if (cardAtIndex && cardAtIndex.id === item.card.id) {
+            player.discard.splice(item.cardIndex, 1)
+          } else {
+            // Card at index doesn't match expected ID - it was likely already removed by another player
+            // Try to find and remove the card by ID instead
+            const actualIndex = player.discard.findIndex(c => c.id === item.card.id)
+            if (actualIndex !== -1) {
+              player.discard.splice(actualIndex, 1)
+            } else {
+              // Card not found - already removed, skip this move entirely
+              return currentState
+            }
+          }
         }
       } else if (item.source === 'deck' && item.playerId !== undefined && item.cardIndex !== undefined) {
         const player = newState.players.find(p => p.id === item.playerId)
         if (player) {
-          player.deck.splice(item.cardIndex, 1)
+          // IMPORTANT: Verify the card at the index matches the expected ID
+          // This prevents duplicate removals when multiple players target the same card
+          const cardAtIndex = player.deck[item.cardIndex]
+          if (cardAtIndex && cardAtIndex.id === item.card.id) {
+            player.deck.splice(item.cardIndex, 1)
+          } else {
+            // Card at index doesn't match expected ID - it was likely already removed by another player
+            // Try to find and remove the card by ID instead
+            const actualIndex = player.deck.findIndex(c => c.id === item.card.id)
+            if (actualIndex !== -1) {
+              player.deck.splice(actualIndex, 1)
+            } else {
+              // Card not found - already removed, skip this move entirely
+              return currentState
+            }
+          }
         }
       } else if (item.source === 'announced' && item.playerId !== undefined) {
         const player = newState.players.find(p => p.id === item.playerId)
@@ -2006,14 +2062,17 @@ export const useGameState = () => {
           // Token ownership rules:
           // - Tokens from token_panel: owned by active player (even if it's a dummy)
           // - Tokens from abilities (spawnToken): already have ownerId set correctly
-          // - Other cards: owned by local player who played them
+          // - Cards from hand/deck/discard: owned by the player whose hand/deck/discard they came from
           let ownerId = cardToMove.ownerId
           if (ownerId === undefined) {
             if (item.source === 'token_panel') {
               // Token from token panel gets active player as owner
               ownerId = newState.activePlayerId ?? localPlayerIdRef.current ?? 0
+            } else if (item.playerId !== undefined) {
+              // Card from a player's hand/deck/discard gets that player as owner
+              ownerId = item.playerId
             } else {
-              // Other cards get local player as owner
+              // Fallback to local player
               ownerId = localPlayerIdRef.current ?? 0
             }
             cardToMove.ownerId = ownerId
@@ -2301,12 +2360,16 @@ export const useGameState = () => {
   const triggerHighlight = useCallback((highlightData: Omit<HighlightData, 'timestamp'>) => {
     const fullHighlightData: HighlightData = { ...highlightData, timestamp: Date.now() }
 
+    console.log('[Highlight] triggerHighlight called:', { highlightData: fullHighlightData, gameId: gameStateRef.current.gameId, wsReady: ws.current?.readyState === WebSocket.OPEN })
+
     // Immediately update local state so the acting player sees the effect without waiting for round-trip
     setLatestHighlight(fullHighlightData)
 
     // Also broadcast to other players via WebSocket
     if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
       ws.current.send(JSON.stringify({ type: 'TRIGGER_HIGHLIGHT', gameId: gameStateRef.current.gameId, highlightData: fullHighlightData }))
+    } else {
+      console.warn('[Highlight] Cannot send highlight:', { wsReady: ws.current?.readyState, gameId: gameStateRef.current.gameId })
     }
   }, [])
 
@@ -2340,6 +2403,18 @@ export const useGameState = () => {
         gameId: gameStateRef.current.gameId,
         coords,
         timestamp,
+      }))
+    }
+  }, [])
+
+  const syncHighlights = useCallback((highlights: HighlightData[]) => {
+    // Broadcast highlights to other players via WebSocket
+    if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
+      ws.current.send(JSON.stringify({
+        type: 'SYNC_HIGHLIGHTS',
+        gameId: gameStateRef.current.gameId,
+        playerId: localPlayerIdRef.current,
+        highlights,
       }))
     }
   }, [])
@@ -2450,17 +2525,34 @@ export const useGameState = () => {
   }, [updateState])
 
   // ... (swapCards, transferStatus, transferAllCounters, recoverDiscardedCard, spawnToken, scoreLine, scoreDiagonal kept as is) ...
-  const swapCards = useCallback((coords1: {row: number, col: number}, coords2: {row: number, col: number}) => {
+  const swapCards = useCallback((coords1: {row: number, col: number}, coords2: {row: number, col: number}, removeReadyStatusFromCoords?: {row: number, col: number}) => {
+    console.log('[swapCards] Called with coords1:', coords1, 'coords2:', coords2, 'removeReadyStatusFromCoords:', removeReadyStatusFromCoords)
     updateState(currentState => {
       if (!currentState.isGameStarted) {
+        console.log('[swapCards] Game not started, returning current state')
         return currentState
       }
       const newState: GameState = deepCloneState(currentState)
       const card1 = newState.board[coords1.row][coords1.col].card
       const card2 = newState.board[coords2.row][coords2.col].card
+      console.log('[swapCards] Swapping card1:', card1?.name, 'with card2:', card2?.name)
+
+      // Perform swap
       newState.board[coords1.row][coords1.col].card = card2
       newState.board[coords2.row][coords2.col].card = card1
+
+      // Remove ready status from the specified coords (where the card ended up after swap)
+      if (removeReadyStatusFromCoords) {
+        const targetCard = newState.board[removeReadyStatusFromCoords.row][removeReadyStatusFromCoords.col].card
+        if (targetCard && targetCard.statuses) {
+          console.log('[swapCards] Removing ready statuses from', targetCard.name, 'at', removeReadyStatusFromCoords)
+          // Remove readyDeploy/readySetup/readyCommit statuses
+          targetCard.statuses = targetCard.statuses.filter(s => s.type !== 'readyDeploy' && s.type !== 'readySetup' && s.type !== 'readyCommit')
+        }
+      }
+
       newState.board = recalculateBoardStatuses(newState)
+      console.log('[swapCards] Swap complete, returning new state')
       return newState
     })
   }, [updateState])
@@ -2773,6 +2865,7 @@ export const useGameState = () => {
     triggerHighlight,
     triggerFloatingText,
     triggerNoTarget,
+    syncHighlights,
     nextPhase,
     prevPhase,
     setPhase,

@@ -3,6 +3,12 @@ import type { Card, GameState, AbilityAction, CommandContext, DragItem, Player, 
 import { getCardAbilityAction, canActivateAbility } from '@server/utils/autoAbilities'
 import { checkActionHasTargets } from '@server/utils/targeting'
 import { hasReadyAbilityInCurrentPhase } from '@/utils/autoAbilities'
+import { recalculateBoardStatuses } from '@server/utils/boardUtils'
+
+// Helper function to deep clone GameState using JSON
+const deepCloneState = (state: GameState): GameState => {
+  return JSON.parse(JSON.stringify(state))
+}
 
 interface UseAppAbilitiesProps {
     gameState: GameState;
@@ -21,12 +27,13 @@ interface UseAppAbilitiesProps {
     onAbilityComplete?: () => void; // Callback when ability completes
 
     // Actions from useGameState
+    updateState: (stateOrFn: GameState | ((prevState: GameState) => GameState)) => void;
     moveItem: (item: DragItem, target: any) => void;
     drawCard: (playerId: number) => void;
     updatePlayerScore: (playerId: number, delta: number) => void;
     markAbilityUsed: (coords: { row: number, col: number }, isDeploy?: boolean, setDeployAttempted?: boolean, readyStatusToRemove?: string) => void;
     applyGlobalEffect: (source: any, targets: any[], type: string, pid: number, isDeploy: boolean) => void;
-    swapCards: (c1: any, c2: any) => void;
+    swapCards: (c1: any, c2: any, removeReadyStatusFromCoords?: any) => void;
     transferStatus: (from: any, to: any, type: string) => void;
     transferAllCounters: (from: any, to: any) => void;
     resurrectDiscardedCard: (pid: number, idx: number, coords: any) => void;
@@ -58,6 +65,7 @@ export const useAppAbilities = ({
   setCounterSelectionData,
   interactionLock,
   onAbilityComplete,
+  updateState,
   moveItem,
   drawCard,
   updatePlayerScore,
@@ -441,6 +449,44 @@ export const useAppAbilities = ({
         })
         return
       }
+      if (action.mode === 'GAWAIN_DEPLOY_SHIELD_AIM') {
+        // 1. Shield Self automatically
+        const actorId = action.sourceCard!.ownerId!
+        addBoardCardStatus(sourceCoords, 'Shield', actorId)
+
+        // 2. Define the Aim Stack action (no restrictions - can target any card in line)
+        const aimStackAction: AbilityAction = {
+          type: 'CREATE_STACK',
+          tokenType: 'Aim',
+          count: 1,
+          mustBeInLineWithSource: true, // Target must be in line with Gawain
+          sourceCard: action.sourceCard,
+          sourceCoords: sourceCoords,
+          isDeployAbility: action.isDeployAbility,
+        }
+
+        // Debug: log what we're looking for
+        console.log('[GAWAIN] Looking for targets in line with', sourceCoords, 'actorId:', actorId)
+        const hasTargets = checkActionHasTargets(aimStackAction, gameState, actorId, commandContext)
+        console.log('[GAWAIN] Has targets:', hasTargets)
+
+        // 3. Check Valid Targets -> Stack Mode or No Target
+        if (hasTargets) {
+          setCursorStack({
+            type: 'Aim',
+            count: 1,
+            isDragging: false,
+            sourceCoords: sourceCoords,
+            sourceCard: action.sourceCard,
+            mustBeInLineWithSource: true, // Target must be in line with Gawain
+            isDeployAbility: action.isDeployAbility,
+          })
+        } else {
+          triggerNoTarget(sourceCoords)
+          // NOTE: markAbilityUsed already called in activateAbility for the initial readyDeploy
+        }
+        return
+      }
       if (action.mode === 'ABR_DEPLOY_SHIELD_AIM') {
         // 1. Shield Self automatically
         const actorId = action.sourceCard!.ownerId!
@@ -756,8 +802,88 @@ export const useAppAbilities = ({
         return
       }
 
-      scoreLine(r1, c1, r2, c2, gameState.activePlayerId!)
-      nextPhase()
+      // Calculate score locally first
+      const playerId = gameState.activePlayerId!
+      const gridSize = gameState.board.length
+      let rStart = r1, rEnd = r1, cStart = c1, cEnd = c1
+      if (r1 === r2) {
+        rStart = r1; rEnd = r1
+        cStart = 0; cEnd = gridSize - 1
+      } else if (c1 === c2) {
+        cStart = c2; cEnd = c2
+        rStart = 0; rEnd = gridSize - 1
+      } else {
+        return
+      }
+
+      const hasActiveLiberator = gameState.board.some(row =>
+        row.some(cell =>
+          cell.card?.ownerId === playerId &&
+          cell.card.name.toLowerCase().includes('data liberator') &&
+          cell.card.statuses?.some(s => s.type === 'Support'),
+        ),
+      )
+
+      let totalScore = 0
+      const scoreEvents: Omit<FloatingTextData, 'timestamp'>[] = []
+
+      for (let r = rStart; r <= rEnd; r++) {
+        for (let c = cStart; c <= cEnd; c++) {
+          const cell = gameState.board[r][c]
+          const card = cell.card
+          if (card && !card.statuses?.some(s => s.type === 'Stun')) {
+            const isOwner = card.ownerId === playerId
+            const hasExploit = card.statuses?.some(s => s.type === 'Exploit' && s.addedByPlayerId === playerId)
+            if (isOwner || (hasActiveLiberator && hasExploit && card.ownerId !== playerId)) {
+              const points = Math.max(0, card.power + (card.powerModifier || 0) + (card.bonusPower || 0))
+              if (points > 0) {
+                totalScore += points
+                scoreEvents.push({ row: r, col: c, text: `+${points}`, playerId })
+              }
+            }
+          }
+        }
+      }
+
+      // Send floating texts for all players to see
+      if (scoreEvents.length > 0) {
+        triggerFloatingText(scoreEvents)
+      }
+
+      // Use updateState directly to ensure atomic update of score + phase
+      updateState((prevState: GameState) => {
+        const newState: GameState = deepCloneState(prevState)
+        const player = newState.players.find(p => p.id === playerId)
+        if (player) {
+          player.score += totalScore
+        }
+        // Exit scoring step and move to next player
+        newState.isScoringStep = false
+        newState.currentPhase = 0
+        const finishingPlayerId = playerId
+        newState.board.forEach(row => {
+          row.forEach(cell => {
+            if (cell.card?.ownerId === finishingPlayerId && cell.card.statuses) {
+              const stunIndex = cell.card.statuses.findIndex(s => s.type === 'Stun')
+              if (stunIndex !== -1) {
+                cell.card.statuses.splice(stunIndex, 1)
+              }
+            }
+          })
+        })
+        // Recalculate statuses after Stun removal
+        newState.board = recalculateBoardStatuses(newState)
+
+        let nextPlayerId = finishingPlayerId
+        const sortedPlayers = [...newState.players].sort((a, b) => a.id - b.id)
+        const currentIndex = sortedPlayers.findIndex(p => p.id === nextPlayerId)
+        if (currentIndex !== -1) {
+          const nextIndex = (currentIndex + 1) % sortedPlayers.length
+          nextPlayerId = sortedPlayers[nextIndex].id
+        }
+        newState.activePlayerId = nextPlayerId
+        return newState
+      })
       setAbilityMode(null)
       return
     }
@@ -885,13 +1011,17 @@ export const useAppAbilities = ({
         setTimeout(() => setAbilityMode(null), 100)
       }
     }
-  }, [abilityMode, gameState, localPlayerId, scoreLine, nextPhase, setAbilityMode, modifyBoardCardPower, markAbilityUsed, scoreDiagonal, updatePlayerScore, triggerFloatingText, commandContext])
+  }, [abilityMode, gameState, localPlayerId, scoreLine, nextPhase, setAbilityMode, modifyBoardCardPower, markAbilityUsed, scoreDiagonal, updatePlayerScore, triggerFloatingText, commandContext, updateState])
 
   const handleBoardCardClick = useCallback((card: Card, boardCoords: { row: number, col: number }) => {
+    console.log('[handleBoardCardClick] Called - card:', card.name, 'coords:', boardCoords, 'abilityMode:', abilityMode?.mode)
+
     if (setPlayMode !== null && setPlayMode !== undefined && cursorStack) {
+      console.log('[handleBoardCardClick] Blocked by cursorStack')
       return
     }
     if (interactionLock.current) {
+      console.log('[handleBoardCardClick] Blocked by interactionLock')
       return
     }
 
@@ -1164,14 +1294,25 @@ export const useAppAbilities = ({
         return
       }
       if (mode === 'SWAP_POSITIONS' && sourceCoords && sourceCoords.row >= 0) {
+        console.log('[SWAP_POSITIONS] Checking swap - sourceCard:', sourceCard?.name, 'targetCard:', card.name, 'sourceCoords:', sourceCoords, 'boardCoords:', boardCoords)
+        // Verify the card at sourceCoords is still the expected sourceCard
+        const actualSourceCard = gameState.board[sourceCoords.row][sourceCoords.col].card
+        if (!actualSourceCard || actualSourceCard.id !== sourceCard?.id) {
+          console.log('[SWAP_POSITIONS] Blocked - source card moved, aborting swap')
+          setAbilityMode(null) // Clear the mode since source moved
+          return
+        }
         if (sourceCard && sourceCard.id === card.id) {
+          console.log('[SWAP_POSITIONS] Blocked - same card')
           return
         }
         if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) {
+          console.log('[SWAP_POSITIONS] Blocked - filter failed')
           return
         }
-        swapCards(sourceCoords, boardCoords)
-        markAbilityUsed(boardCoords, isDeployAbility)
+        console.log('[SWAP_POSITIONS] Executing swap!')
+        // Swap cards and remove ready status from where Reckless Provocateur ends up (boardCoords)
+        swapCards(sourceCoords, boardCoords, boardCoords)
         setTimeout(() => setAbilityMode(null), 100)
         return
       }

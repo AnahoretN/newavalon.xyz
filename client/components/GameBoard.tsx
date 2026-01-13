@@ -1,7 +1,7 @@
 import React, { memo, useMemo, useCallback, useState } from 'react'
 import type { Board, GridSize, DragItem, DropTarget, Card as CardType, PlayerColor, HighlightData, FloatingTextData } from '@/types'
 import { Card } from './Card'
-import { PLAYER_COLORS, FLOATING_TEXT_COLORS } from '@/constants'
+import { PLAYER_COLORS, FLOATING_TEXT_COLORS, PLAYER_COLOR_RGB } from '@/constants'
 
 interface GameBoardProps {
   board: Board;
@@ -154,9 +154,11 @@ const GridCell = memo<{
       const canDrop = !!draggedItem && (!isOccupied || (isOccupied && draggedItem.source === 'counter_panel'))
       const canPlay = isInPlayMode && !isOccupied
       const canStack = isStackMode && isValidTarget
+      // Interactive for click handling, but visual highlight comes from shared highlights
       const isInteractive = isValidTarget || canPlay || canStack
 
-      const targetClasses = isInteractive ? 'ring-4 ring-cyan-400 shadow-[0_0_15px_#22d3ee] cursor-pointer z-10' : ''
+      // Only add cursor pointer for interactive cells - visual highlight comes from shared highlights
+      const targetClasses = isInteractive ? 'cursor-pointer z-10' : ''
       const cellClasses = `bg-board-cell-active ${isOver && canDrop ? 'bg-indigo-400 opacity-80' : ''} ${isInPlayMode && isOccupied ? 'cursor-not-allowed' : ''} ${targetClasses}`
 
       const isFaceUp: boolean = useMemo(() => {
@@ -184,10 +186,6 @@ const GridCell = memo<{
           data-interactive={!cell.card}
           data-board-coords={`${row},${col}`}
         >
-          {isInteractive && (
-            <div className="absolute inset-0 rounded-lg bg-cyan-400 bg-opacity-30 animate-pulse pointer-events-none z-10" />
-          )}
-
           {showNoTarget && (
             <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none">
               <img
@@ -198,20 +196,31 @@ const GridCell = memo<{
             </div>
           )}
 
-          {/* Highlights from gameState - visible to all players with owner's color */}
-          {cellHighlights.filter(h => h.type === 'cell' && h.row === row && h.col === col).map((highlight, idx) => {
-            const highlightPlayerColor = playerColorMap.get(highlight.playerId)
-            // If it's local player's highlight, use blue. Otherwise use owner's color.
-            const isLocalPlayer = highlight.playerId === localPlayerId
-            const colorClass = isLocalPlayer
-              ? 'ring-blue-400 shadow-[0_0_15px_#60a5fa]'
-              : (highlightPlayerColor ? PLAYER_COLORS[highlightPlayerColor]?.glow || 'ring-cyan-400 shadow-[0_0_15px_#22d3ee]' : 'ring-cyan-400 shadow-[0_0_15px_#22d3ee]')
-
+          {/* Highlights from gameState - show all highlights for this cell */}
+          {cellHighlights.filter(h => {
+            // Show all highlights for this cell (regardless of which player created them)
+            return h.type === 'cell' && h.row === row && h.col === col
+          }).map((highlight, idx) => {
+            const playerColor = playerColorMap.get(highlight.playerId)
+            const colorStyles = playerColor && PLAYER_COLORS[playerColor] ? PLAYER_COLORS[playerColor] : null
+            // More visible glow effect with pulsing animation
+            const glowColor = colorStyles?.glow || 'shadow-[0_0_15px_#2563eb]'
+            const borderColor = colorStyles?.border || 'border-blue-500'
             return (
               <div
                 key={`highlight-${idx}-${highlight.timestamp}`}
-                className={`absolute inset-0 rounded-lg pointer-events-none z-10 ${colorClass.replace('shadow-', 'ring-4 ring-opacity-70 ')}`}
-                style={{ animation: 'pulse 1s ease-in-out infinite' }}
+                className="absolute inset-0 rounded-md pointer-events-none animate-pulse"
+                style={{
+                  zIndex: 40,
+                  boxShadow: '0 0 20px 4px rgba(59, 130, 246, 0.8)',
+                  border: '3px solid',
+                  borderColor: playerColor && PLAYER_COLOR_RGB[playerColor]
+                    ? `rgb(${PLAYER_COLOR_RGB[playerColor].r}, ${PLAYER_COLOR_RGB[playerColor].g}, ${PLAYER_COLOR_RGB[playerColor].b})`
+                    : 'rgb(37, 99, 235)',
+                  backgroundColor: playerColor && PLAYER_COLOR_RGB[playerColor]
+                    ? `rgba(${PLAYER_COLOR_RGB[playerColor].r}, ${PLAYER_COLOR_RGB[playerColor].g}, ${PLAYER_COLOR_RGB[playerColor].b}, 0.4)`
+                    : 'rgba(37, 99, 235, 0.4)',
+                }}
               />
             )
           })}
@@ -240,6 +249,7 @@ const GridCell = memo<{
                 activeAbilitySourceCoords={abilitySourceCoords}
                 boardCoords={{ row: row, col: col }}
                 abilityCheckKey={abilityCheckKey}
+                onCardClick={onCardClick}
               />
             </div>
           )}
@@ -303,6 +313,13 @@ export const GameBoard = memo<GameBoardProps>(({
   abilitySourceCoords = null,
   abilityCheckKey,
 }) => {
+  // Debug: log highlights when they change
+  React.useEffect(() => {
+    if (highlights && highlights.length > 0) {
+      console.log('[GameBoard] Received highlights:', highlights.length, highlights)
+    }
+  }, [highlights])
+
   const activeBoard = useMemo(() => {
     const totalSize = board.length
     const offset = Math.floor((totalSize - activeGridSize) / 2)
@@ -439,7 +456,48 @@ export const GameBoard = memo<GameBoardProps>(({
         )}
       </div>
 
-      {highlight && (
+      {/* Highlights from gameState for rows/cols */}
+      {highlights && highlights.length > 0 && (
+        <div className={`absolute top-2 right-2 bottom-2 left-2 grid ${gridSizeClasses[activeGridSize]} gap-0.5 pointer-events-none z-20`}>
+          {highlights.filter(h => h.type === 'row' || h.type === 'col').map((h, idx) => {
+            const playerColor = playerColorMap.get(h.playerId)
+            const outlineClass = (playerColor && PLAYER_COLORS[playerColor]) ? PLAYER_COLORS[playerColor].outline : 'outline-yellow-400'
+            const baseClasses = `outline outline-[8px] ${outlineClass} rounded-lg`
+            const totalSize = board.length
+            const offset = Math.floor((totalSize - activeGridSize) / 2)
+
+            if (h.type === 'row' && h.row !== undefined && h.row >= offset && h.row < offset + activeGridSize) {
+              const gridRow = h.row - offset + 1
+              return (
+                <div
+                  key={`highlight-row-${idx}-${h.timestamp}`}
+                  className={baseClasses}
+                  style={{
+                    gridArea: `${gridRow} / 1 / ${gridRow + 1} / ${activeGridSize + 1}`,
+                  }}
+                />
+              )
+            }
+
+            if (h.type === 'col' && h.col !== undefined && h.col >= offset && h.col < offset + activeGridSize) {
+              const gridCol = h.col - offset + 1
+              return (
+                <div
+                  key={`highlight-col-${idx}-${h.timestamp}`}
+                  className={baseClasses}
+                  style={{
+                    gridArea: `1 / ${gridCol} / ${activeGridSize + 1} / ${gridCol + 1}`,
+                  }}
+                />
+              )
+            }
+            return null
+          })}
+        </div>
+      )}
+
+      {/* Legacy highlight for backwards compatibility */}
+      {highlight && !highlights?.some(h => h.type === highlight.type && h.row === highlight.row && h.col === highlight.col) && (
         <div className={`absolute top-2 right-2 bottom-2 left-2 grid ${gridSizeClasses[activeGridSize]} gap-0.5 pointer-events-none z-20`}>
           {HighlightContent}
         </div>

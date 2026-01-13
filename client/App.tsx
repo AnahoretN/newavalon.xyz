@@ -33,6 +33,7 @@ import type {
   CommandContext,
   CounterSelectionData,
   AbilityAction,
+  GameState,
 } from './types'
 import { GameMode, DeckType } from './types'
 import { STATUS_ICONS, STATUS_DESCRIPTIONS } from './constants'
@@ -75,6 +76,7 @@ const App = memo(function App() {
     requestGamesList,
     exitGame,
     moveItem,
+    updateState,
     shufflePlayerDeck,
     addBoardCardStatus,
     removeBoardCardStatus,
@@ -101,6 +103,7 @@ const App = memo(function App() {
     latestFloatingTexts,
     latestNoTarget,
     triggerNoTarget,
+    syncHighlights,
     nextPhase,
     prevPhase,
     setPhase,
@@ -186,6 +189,16 @@ const App = memo(function App() {
   const [highlight, setHighlight] = useState<HighlightData | null>(null)
   const [activeFloatingTexts, setActiveFloatingTexts] = useState<FloatingTextData[]>([])
 
+  // Listen for syncHighlights events from WebSocket
+  useEffect(() => {
+    const handleSyncHighlights = (e: Event) => {
+      const customEvent = e as CustomEvent<HighlightData[]>
+      setLocalHighlights(customEvent.detail || [])
+    }
+    window.addEventListener('syncHighlights', handleSyncHighlights as EventListener)
+    return () => window.removeEventListener('syncHighlights', handleSyncHighlights as EventListener)
+  }, [])
+
   // Load auto-abilities setting from localStorage
   const [isAutoAbilitiesEnabled, setIsAutoAbilitiesEnabled] = useState(() => {
     try {
@@ -254,6 +267,8 @@ const App = memo(function App() {
   const [validTargets, setValidTargets] = useState<{row: number, col: number}[]>([])
   const [validHandTargets, setValidHandTargets] = useState<{playerId: number, cardIndex: number}[]>([])
   const [noTargetOverlay, setNoTargetOverlay] = useState<{row: number, col: number} | null>(null)
+  // Local state for highlights - synchronized via WebSocket, NOT via gameState
+  const [localHighlights, setLocalHighlights] = useState<HighlightData[]>([])
   const [commandContext, setCommandContext] = useState<CommandContext>({})
   const [abilityCheckKey, setAbilityCheckKey] = useState(0)
   const leftPanelRef = useRef<HTMLDivElement>(null)
@@ -261,6 +276,8 @@ const App = memo(function App() {
   const [sidePanelWidth, setSidePanelWidth] = useState<number | undefined>(undefined)
 
   const interactionLock = useRef(false)
+  // Track sent highlights to avoid duplicate broadcasts
+  const sentHighlightsHash = useRef<string>('')
 
   // Lifted state for cursor stack to resolve circular dependency
   const [cursorStack, setCursorStack] = useState<CursorStackState | null>(null)
@@ -315,6 +332,7 @@ const App = memo(function App() {
     setCounterSelectionData,
     interactionLock,
     onAbilityComplete: () => setAbilityCheckKey(prev => prev + 1),
+    updateState,
     moveItem,
     drawCard,
     updatePlayerScore,
@@ -807,14 +825,16 @@ const App = memo(function App() {
         })
       }
     }
-    if (abilityMode && (abilityMode.mode === 'SCORE_LAST_PLAYED_LINE' || abilityMode.mode === 'SELECT_LINE_END')) {
+    if (abilityMode && (abilityMode.mode === 'SCORE_LAST_PLAYED_LINE' || abilityMode.mode === 'SELECT_LINE_END' || abilityMode.mode === 'INTEGRATOR_LINE_SELECT' || abilityMode.mode === 'ZIUS_LINE_SELECT')) {
       const gridSize = gameState.board.length
       if (abilityMode.sourceCoords) {
-        for (let r = 0; r < gridSize; r++) {
-          boardTargets.push({ row: r, col: abilityMode.sourceCoords.col })
-        }
+        // Highlight horizontal line (same row)
         for (let c = 0; c < gridSize; c++) {
           boardTargets.push({ row: abilityMode.sourceCoords.row, col: c })
+        }
+        // Highlight vertical line (same column)
+        for (let r = 0; r < gridSize; r++) {
+          boardTargets.push({ row: r, col: abilityMode.sourceCoords.col })
         }
       } else {
         for (let r = 0; r < gridSize; r++) {
@@ -830,6 +850,110 @@ const App = memo(function App() {
     return undefined
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abilityMode, cursorStack, gameState.board, gameState.players, localPlayerId, commandContext, gameState.activePlayerId])
+
+  // Separate effect: Broadcast highlights to other players when abilityMode or cursorStack changes
+  // ONLY the active player (who has abilityMode or cursorStack) should create and sync highlights
+  // Other players just receive highlights via WebSocket message
+  useEffect(() => {
+    console.log('[Highlights] Effect triggered - abilityMode:', abilityMode?.mode, 'cursorStack:', cursorStack?.type, 'validTargets:', validTargets.length)
+
+    // If we don't have abilityMode OR cursorStack (mode ended)
+    if (!abilityMode && !cursorStack) {
+      // If we previously sent highlights, clear them and broadcast empty array
+      if (sentHighlightsHash.current !== '' || localHighlights.length > 0) {
+        console.log('[Highlights] Mode ended, clearing highlights and broadcasting empty array')
+        sentHighlightsHash.current = ''
+        setLocalHighlights([])
+        // Broadcast empty highlights to clear them for all players
+        syncHighlights([])
+      }
+      return
+    }
+
+    // Create a hash of current state to detect changes
+    const mode = abilityMode?.mode || cursorStack?.type || 'none'
+    const sourceCoords = abilityMode?.sourceCoords || cursorStack?.sourceCoords
+    const sourceCoordsStr = sourceCoords ? `${sourceCoords.row},${sourceCoords.col}` : 'none'
+    const targetsHash = validTargets.map(t => `${t.row},${t.col}`).sort().join('|')
+    const currentHash = `${mode}:${sourceCoordsStr}:${targetsHash}`
+
+    console.log('[Highlights] currentHash:', currentHash, 'sentHash:', sentHighlightsHash.current)
+
+    // Skip if same state (hash hasn't changed)
+    if (currentHash === sentHighlightsHash.current) {
+      console.log('[Highlights] Same state, skipping')
+      return
+    }
+
+    const activePlayerId = gameState.activePlayerId
+    if (!activePlayerId) {
+      sentHighlightsHash.current = currentHash
+      console.log('[Highlights] No activePlayerId')
+      return
+    }
+
+    // Calculate new highlights based on current mode
+    const newHighlights: HighlightData[] = []
+    const timestamp = Date.now()
+
+    // Send new highlights for line/target selection modes
+    if (abilityMode && (abilityMode.mode === 'SCORE_LAST_PLAYED_LINE' ||
+        abilityMode.mode === 'SELECT_LINE_END' ||
+        abilityMode.mode === 'INTEGRATOR_LINE_SELECT' ||
+        abilityMode.mode === 'ZIUS_LINE_SELECT')) {
+      const gridSize = gameState.board.length
+
+      if (abilityMode.sourceCoords) {
+        // Send horizontal line highlights
+        for (let c = 0; c < gridSize; c++) {
+          newHighlights.push({
+            type: 'cell',
+            row: abilityMode.sourceCoords.row,
+            col: c,
+            playerId: activePlayerId,
+            timestamp,
+          })
+        }
+        // Send vertical line highlights
+        for (let r = 0; r < gridSize; r++) {
+          newHighlights.push({
+            type: 'cell',
+            row: r,
+            col: abilityMode.sourceCoords.col,
+            playerId: activePlayerId,
+            timestamp,
+          })
+        }
+      }
+      console.log('[Highlights] Line selection mode:', abilityMode.mode, 'highlights:', newHighlights.length)
+    } else if (validTargets.length > 0) {
+      // For all modes with validTargets (including cursorStack), send highlights
+      validTargets.forEach(target => {
+        newHighlights.push({
+          type: 'cell',
+          row: target.row,
+          col: target.col,
+          playerId: activePlayerId,
+          timestamp,
+        })
+      })
+      console.log('[Highlights] Target selection - mode:', mode, 'targets:', validTargets.length, 'highlights:', newHighlights.length)
+    } else {
+      // Mode is active but no valid targets yet - don't clear, keep existing highlights until targets appear
+      console.log('[Highlights] Mode active but no targets yet - keeping existing highlights')
+      sentHighlightsHash.current = currentHash
+      return
+    }
+
+    // Update local highlights and broadcast via WebSocket
+    console.log('[Highlights] Setting local highlights:', newHighlights.length)
+    setLocalHighlights(newHighlights)
+
+    // Broadcast highlights to other players via WebSocket (does not affect local state)
+    syncHighlights(newHighlights)
+
+    sentHighlightsHash.current = currentHash
+  }, [abilityMode, abilityMode?.mode, abilityMode?.sourceCoords, cursorStack, cursorStack?.type, cursorStack?.sourceCoords, gameState.board, gameState.activePlayerId, validTargets, syncHighlights])
 
   useEffect(() => {
     if (latestHighlight) {
@@ -1017,9 +1141,13 @@ const App = memo(function App() {
         const actorId = actionToProcess.sourceCard?.ownerId || localPlayerId
         const hasTargets = checkActionHasTargets(actionToProcess, gameState, actorId, commandContext)
 
+        console.log('[ActionQueue] Processing action:', actionToProcess.mode, 'hasTargets:', hasTargets)
+
         if (hasTargets) {
+          console.log('[ActionQueue] Setting abilityMode:', actionToProcess)
           setAbilityMode(actionToProcess)
         } else {
+          console.log('[ActionQueue] No targets, triggering no-target overlay')
           if (actionToProcess.sourceCoords && actionToProcess.sourceCoords.row >= 0) {
             triggerNoTarget(actionToProcess.sourceCoords)
           }
@@ -1932,7 +2060,7 @@ const App = memo(function App() {
               disableActiveHighlights={isTargetingMode}
               preserveDeployAbilities={justAutoTransitioned}
               activeFloatingTexts={activeFloatingTexts}
-              highlights={gameState.highlights}
+              highlights={localHighlights}
               abilitySourceCoords={abilityMode?.sourceCoords || null}
               abilityCheckKey={abilityCheckKey}
             />

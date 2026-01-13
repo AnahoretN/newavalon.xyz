@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.2.6t] - 2026-01-13
+
+### Fixed
+- **ABR Gawain Deploy**: Fixed targeting - can now Aim any card in its line (not just threats)
+- **ABR Gawain Shield**: Fixed duplicate Shield status by adding Shield to unique statuses list
+- **Reckless Provocateur Deploy**: Fixed swap positions ability - now correctly swaps with adjacent cards
+- **Card Click Event Bubbling**: Fixed double-triggering by adding stopPropagation to Card component click handler
+
 ## [0.2.5t] - 2026-01-03
 
 ### Fixed

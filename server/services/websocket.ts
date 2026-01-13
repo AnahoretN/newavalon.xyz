@@ -21,6 +21,11 @@ import { handlePlayerLeave, broadcastGamesList } from './gameLifecycle.js';
 // Store wss instance for broadcasting
 let wssInstance = null;
 
+// Export wssInstance for use in other modules (like visualEffects)
+export function getWssInstance() {
+  return wssInstance;
+}
+
 // Import handler modules
 import {
   handleSubscribe,
@@ -46,7 +51,8 @@ import {
   handleTriggerHighlight,
   handleTriggerNoTarget,
   handleTriggerFloatingText,
-  handleTriggerFloatingTextBatch
+  handleTriggerFloatingTextBatch,
+  handleSyncHighlights
 } from '../handlers/visualEffects.js';
 import {
   handleUpdateDeckData
@@ -198,6 +204,7 @@ function routeMessage(ws, data) {
     'TRIGGER_FLOATING_TEXT': handleTriggerFloatingText,
     'TRIGGER_FLOATING_TEXT_BATCH': handleTriggerFloatingTextBatch,
     'TRIGGER_NO_TARGET': handleTriggerNoTarget,
+    'SYNC_HIGHLIGHTS': handleSyncHighlights,
     'EXIT_GAME': handleExitGame,
     'FORCE_SYNC': handleForceSync,
     'SYNC_GAME': handleSyncGame,

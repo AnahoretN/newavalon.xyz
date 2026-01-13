@@ -629,7 +629,7 @@ const CARD_ABILITIES: CardAbilityDefinition[] = [
     activationType: 'deploy',
     getAction: (_card, _gameState, _ownerId, coords) => ({
       type: 'ENTER_MODE',
-      mode: 'PRINCEPS_SHIELD_THEN_AIM', // Same as Princeps
+      mode: 'GAWAIN_DEPLOY_SHIELD_AIM', // Can Aim ANY card in line (not just threats)
       sourceCard: _card,
       sourceCoords: coords,
       payload: {}

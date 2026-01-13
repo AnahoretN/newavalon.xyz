@@ -160,6 +160,11 @@ export const calculateValidTargets = (
       tokenType: action.tokenType,
     }
 
+    // Debug logging for Gawain
+    if (action.tokenType === 'Aim' && action.mustBeInLineWithSource) {
+      console.log('[calculateValidTargets] Looking for Aim targets with mustBeInLineWithSource, sourceCoords:', action.sourceCoords, 'actorId:', actorId)
+    }
+
     // Iterate ONLY over active grid bounds (not entire 7x7 board)
     for (let r = minBound; r <= maxBound; r++) {
       for (let c = minBound; c <= maxBound; c++) {
@@ -177,6 +182,12 @@ export const calculateValidTargets = (
         }
       }
     }
+
+    // Debug logging for Gawain
+    if (action.tokenType === 'Aim' && action.mustBeInLineWithSource) {
+      console.log('[calculateValidTargets] Found', targets.length, 'valid targets for Aim:', targets)
+    }
+
     return targets
   }
 
@@ -517,7 +528,8 @@ export const checkActionHasTargets = (action: AbilityAction, currentGameState: G
   if (action.mode === 'PRINCEPS_SHIELD_THEN_AIM' ||
          action.mode === 'SHIELD_SELF_THEN_SPAWN' ||
          action.mode === 'SHIELD_SELF_THEN_RIOT_PUSH' ||
-         action.mode === 'ABR_DEPLOY_SHIELD_AIM') {
+         action.mode === 'ABR_DEPLOY_SHIELD_AIM' ||
+         action.mode === 'GAWAIN_DEPLOY_SHIELD_AIM') {
     return true
   }
 

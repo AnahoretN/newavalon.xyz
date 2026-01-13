@@ -4,7 +4,8 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { getGameState } from '../services/gameState.js';
+import { getGameState, getClientGameMap } from '../services/gameState.js';
+import { getWssInstance } from '../services/websocket.js';
 import { sanitizeString, validateMessageSize } from '../utils/security.js';
 import type { WebSocket } from 'ws';
 
@@ -17,7 +18,7 @@ interface ExtendedWebSocket extends WebSocket {
 
 /**
  * Helper function to broadcast visual effects to all clients in a game
- * @param ws - WebSocket connection
+ * @param ws - WebSocket connection (used only for type reference)
  * @param gameId - Game ID (should be sanitized before calling)
  * @param messageType - Type of message to broadcast
  * @param payload - Message payload
@@ -33,18 +34,28 @@ function broadcastVisualEffect(
     ...payload
   });
 
-  const wss = ws.server;
-  if (wss && wss.clients) {
-    wss.clients.forEach((client: ExtendedWebSocket) => {
-      // Send to all clients in the game EXCEPT the sender (who already shows the effect locally)
-      if (client !== ws && client.readyState === 1 && wss.clientGameMap && wss.clientGameMap.get(client) === gameId) {
+  // Get wssInstance from websocket service
+  const wssInstance = getWssInstance();
+
+  // Get the client game map to find all clients associated with this game
+  const clientGameMap = getClientGameMap();
+
+  // Send to all connected clients associated with this game (including sender)
+  if (wssInstance && wssInstance.clients) {
+    let sentCount = 0
+    wssInstance.clients.forEach((client: ExtendedWebSocket) => {
+      if (client.readyState === 1 && clientGameMap.get(client) === gameId) {
         try {
           client.send(message);
+          sentCount++
         } catch (err: any) {
           logger.error(`Error sending ${messageType} to client:`, err);
         }
       }
     });
+    logger.debug(`Broadcast ${messageType} to ${sentCount} clients in game ${gameId}`)
+  } else {
+    logger.warn(`Cannot broadcast ${messageType}: wssInstance=${!!wssInstance}, clients=${!!wssInstance?.clients}`)
   }
 }
 
@@ -103,7 +114,7 @@ export function handleTriggerHighlight(ws: ExtendedWebSocket, data: any) {
       return;
     }
 
-    // Broadcast the highlight event to all OTHER clients in the game (exclude sender)
+    // Broadcast the highlight event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'HIGHLIGHT_TRIGGERED', { highlightData });
 
     logger.debug(`Highlight triggered in game ${sanitizedGameId}`);
@@ -167,7 +178,7 @@ export function handleTriggerNoTarget(ws: ExtendedWebSocket, data: any) {
       return;
     }
 
-    // Broadcast the no-target event to all OTHER clients in the game (exclude sender)
+    // Broadcast the no-target event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'NO_TARGET_TRIGGERED', { coords, timestamp });
 
     logger.debug(`No target overlay triggered in game ${sanitizedGameId}`);
@@ -231,7 +242,7 @@ export function handleTriggerFloatingText(ws: ExtendedWebSocket, data: any) {
       return;
     }
 
-    // Broadcast the floating text event to all OTHER clients in the game (exclude sender)
+    // Broadcast the floating text event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'FLOATING_TEXT_TRIGGERED', { floatingTextData });
 
     logger.debug(`Floating text triggered in game ${sanitizedGameId}`);
@@ -295,11 +306,96 @@ export function handleTriggerFloatingTextBatch(ws: ExtendedWebSocket, data: any)
       return;
     }
 
-    // Broadcast the floating text batch event to all OTHER clients in the game (exclude sender)
+    // Broadcast the floating text batch event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'FLOATING_TEXT_BATCH_TRIGGERED', { batch });
 
     logger.debug(`Floating text batch triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger floating text batch:', err);
+  }
+}
+
+/**
+ * Handle SYNC_HIGHLIGHTS message
+ * Broadcasts highlight array to all clients in the game (for real-time target selection)
+ */
+export function handleSyncHighlights(ws: ExtendedWebSocket, data: any) {
+  try {
+    // Security: Validate message size
+    if (!validateMessageSize(JSON.stringify(data))) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Message size exceeds limit'
+      }));
+      return;
+    }
+
+    // Input validation
+    if (!data || typeof data !== 'object') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid data format'
+      }));
+      return;
+    }
+
+    const { gameId, highlights } = data;
+
+    if (!gameId || typeof gameId !== 'string') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing gameId'
+      }));
+      return;
+    }
+
+    if (!Array.isArray(highlights)) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing highlights array'
+      }));
+      return;
+    }
+
+    // Security: Sanitize gameId
+    const sanitizedGameId = sanitizeString(gameId);
+
+    const gameState = getGameState(sanitizedGameId);
+
+    if (!gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Game not found'
+      }));
+      return;
+    }
+
+    // Broadcast highlights to ALL OTHER clients (not the sender)
+    const message = JSON.stringify({
+      type: 'SYNC_HIGHLIGHTS',
+      highlights: highlights
+    });
+
+    const wssInstance = getWssInstance();
+    const clientGameMap = getClientGameMap();
+
+    if (wssInstance && wssInstance.clients) {
+      let sentCount = 0
+      wssInstance.clients.forEach((client: ExtendedWebSocket) => {
+        // Send to all clients in this game EXCEPT the sender
+        if (client !== ws && client.readyState === 1 && clientGameMap.get(client) === sanitizedGameId) {
+          try {
+            client.send(message);
+            sentCount++
+          } catch (err: any) {
+            logger.error(`Error sending SYNC_HIGHLIGHTS to client:`, err);
+          }
+        }
+      });
+      logger.debug(`Synced highlights to ${sentCount} other clients in game ${sanitizedGameId}`)
+    }
+
+  } catch (err: any) {
+    logger.error('Failed to sync highlights:', err);
   }
 }

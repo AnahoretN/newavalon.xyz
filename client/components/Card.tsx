@@ -28,6 +28,7 @@ interface CardInteractionProps {
   activeAbilitySourceCoords?: { row: number, col: number } | null; // Source of currently active ability
   boardCoords?: { row: number, col: number } | null; // This card's position on board
   abilityCheckKey?: number; // Incremented to recheck ability readiness after ability completion
+  onCardClick?: (card: CardType, boardCoords: { row: number, col: number }) => void; // Called when card is clicked
 }
 
 // Extracted outside CardCore to preserve React.memo optimization
@@ -113,6 +114,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   activeAbilitySourceCoords = null,
   boardCoords = null,
   abilityCheckKey,
+  onCardClick,
 }) => {
   const { getCardTranslation } = useLanguage()
   const [tooltipVisible, setTooltipVisible] = useState(false)
@@ -266,11 +268,19 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   // 3. Not dismissed and not disabled
   const shouldHighlight = !disableActiveHighlights && !highlightDismissed && hasReadyAbility && !isExecutingAbility
 
-  const handleCardClick = useCallback(() => {
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    // Stop propagation to prevent double-triggering from parent GameBoard cell
+    e.stopPropagation()
+    console.log('[Card] handleCardClick - card:', card.name, 'boardCoords:', boardCoords, 'shouldHighlight:', shouldHighlight, 'onCardClick:', !!onCardClick)
+    // If card has a ready ability and user clicks it, dismiss highlight and trigger ability
     if (shouldHighlight && localPlayerId === card.ownerId) {
       setHighlightDismissed(true)
     }
-  }, [shouldHighlight, localPlayerId, card.ownerId])
+    // Call the parent's onCardClick handler if provided
+    if (onCardClick && boardCoords) {
+      onCardClick(card, boardCoords)
+    }
+  }, [shouldHighlight, localPlayerId, card.ownerId, onCardClick, boardCoords, card])
 
   // Aggregate statuses by TYPE and PLAYER ID to allow separate icons for different players.
   // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are invisible to players

@@ -48,6 +48,9 @@ interface GameState {
   isReadyCheckActive: boolean;
   created: number;
   lastActivity: number;
+  // Visual effects (synced across all clients)
+  floatingTexts: any[];
+  highlights: any[];
   [key: string]: any;
 }
 
@@ -91,6 +94,9 @@ export function createGameState(gameId: string, options: GameOptions = {}): Game
     autoAbilitiesEnabled: true,
     autoDrawEnabled: true,
     preserveDeployAbilities: false,
+    // Visual effects (synced across all clients)
+    floatingTexts: [],
+    highlights: [],
     ...options
   };
 
