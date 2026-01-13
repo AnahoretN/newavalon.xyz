@@ -1053,9 +1053,8 @@ export const useAppAbilities = ({
         markAbilityUsed(sourceCoords, isDeployAbility)
       } else if (actionType === 'SCORE_LINE' || !actionType) {
         scoreLine(r1, c1, r2, c2, actorId!)
-        if (gameState.isScoringStep) {
-          nextPhase()
-        }
+        // Always advance phase after scoring - nextPhase will check isScoringStep internally
+        nextPhase()
       }
       setTimeout(() => setAbilityMode(null), 100)
     }
@@ -1074,6 +1073,8 @@ export const useAppAbilities = ({
         }
 
         scoreDiagonal(r1, c1, r2, c2, actorId!, payload.bonusType)
+        // Always advance phase after scoring - nextPhase will check isScoringStep internally
+        nextPhase()
         setTimeout(() => setAbilityMode(null), 100)
       }
     }

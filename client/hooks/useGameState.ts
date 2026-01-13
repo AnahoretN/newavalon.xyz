@@ -1687,6 +1687,8 @@ export const useGameState = () => {
       }
 
       const nextPhaseIndex = currentState.currentPhase + 1
+      const activePlayerId = currentState.activePlayerId
+
       // Only consume deploy abilities if preserveDeployAbilities is false (new ready status system)
       if (!currentState.preserveDeployAbilities) {
         newState.board.forEach(row => {
@@ -1711,8 +1713,40 @@ export const useGameState = () => {
         // After Scoring phase (3), wrap back to Setup (0)
         newState.isScoringStep = false
         newState.currentPhase = 0
+        // Reset readySetup for active player's cards when entering Setup phase
+        if (activePlayerId !== undefined) {
+          newState.board.forEach(row => {
+            row.forEach(cell => {
+              const card = cell.card
+              if (card && card.ownerId === activePlayerId) {
+                resetPhaseReadyStatuses(card, activePlayerId)
+              }
+            })
+          })
+        }
         return newState
       } else {
+        // Reset phase-specific ready statuses when entering the phase
+        // Setup phase (0): reset readySetup
+        // Commit phase (2): reset readyCommit
+        if (activePlayerId !== undefined) {
+          newState.board.forEach(row => {
+            row.forEach(cell => {
+              const card = cell.card
+              if (card && card.ownerId === activePlayerId) {
+                // Reset appropriate ready status based on the phase we're entering
+                if (nextPhaseIndex === 0) {
+                  // Entering Setup phase - reset readySetup
+                  resetPhaseReadyStatuses(card, activePlayerId)
+                } else if (nextPhaseIndex === 2) {
+                  // Entering Commit phase - reset readyCommit
+                  resetPhaseReadyStatuses(card, activePlayerId)
+                }
+              }
+            })
+          })
+        }
+
         newState.board.forEach(row => {
           row.forEach(cell => {
             if (cell.card?.statuses) {
