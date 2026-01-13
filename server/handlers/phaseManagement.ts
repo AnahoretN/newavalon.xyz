@@ -170,7 +170,7 @@ export function handleNextPhase(ws, data) {
 
     // Get current phase index or default to 0
     const currentPhaseIndex = gameState.currentPhaseIndex || 0;
-    const maxPhases = gameState.turnPhases?.length || 5;
+    const maxPhases = gameState.turnPhases?.length || 4;
 
     // Advance to next phase, wrapping around
     gameState.currentPhaseIndex = (currentPhaseIndex + 1) % maxPhases;
@@ -209,7 +209,7 @@ export function handlePrevPhase(ws, data) {
 
     // Get current phase index or default to 0
     const currentPhaseIndex = gameState.currentPhaseIndex || 0;
-    const maxPhases = gameState.turnPhases?.length || 5;
+    const maxPhases = gameState.turnPhases?.length || 4;
 
     // Go to previous phase, wrapping around
     gameState.currentPhaseIndex = (currentPhaseIndex - 1 + maxPhases) % maxPhases;
@@ -256,7 +256,7 @@ export function handleSetPhase(ws, data) {
       return;
     }
 
-    const maxPhases = gameState.turnPhases?.length || 5;
+    const maxPhases = gameState.turnPhases?.length || 4;
 
     if (numericPhaseIndex < 0 || numericPhaseIndex >= maxPhases) {
       ws.send(JSON.stringify({

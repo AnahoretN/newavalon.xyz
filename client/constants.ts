@@ -92,9 +92,10 @@ export const PLAYER_COLOR_NAMES: PlayerColor[] = ['blue', 'purple', 'red', 'gree
  * The sequence of phases in a player's turn.
  */
 export const TURN_PHASES = [
-  'Setup Phase',
-  'Main Phase',
-  'Commit Phase',
+  'Setup',
+  'Main',
+  'Commit',
+  'Scoring',
 ]
 
 /**

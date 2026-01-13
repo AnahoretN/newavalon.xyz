@@ -1658,9 +1658,11 @@ const App = memo(function App() {
         isHost={isHost}
         onSyncGame={handleSyncAndRefresh}
         currentPhase={gameState.currentPhase}
+        onSetPhase={setPhase}
         onNextPhase={nextPhase}
         onPrevPhase={prevPhase}
-        onSetPhase={setPhase}
+        activePlayerId={gameState.activePlayerId}
+        playerColorMap={playerColorMap}
         isAutoAbilitiesEnabled={isAutoAbilitiesEnabled}
         onToggleAutoAbilities={setIsAutoAbilitiesEnabled}
         isAutoDrawEnabled={isAutoDrawEnabled}
@@ -1671,7 +1673,6 @@ const App = memo(function App() {
         }}
         hideDummyCards={hideDummyCards}
         onToggleHideDummyCards={setHideDummyCards}
-        isScoringStep={gameState.isScoringStep}
         currentRound={gameState.currentRound}
         turnNumber={gameState.turnNumber}
       />

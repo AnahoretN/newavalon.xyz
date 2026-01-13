@@ -1658,8 +1658,18 @@ export const useGameState = () => {
         })
       }
 
-      if (nextPhaseIndex >= TURN_PHASES.length) {
+      // When transitioning from Commit (phase 2) to Scoring (phase 3), enable scoring step
+      if (nextPhaseIndex === 3 && currentState.currentPhase === 2) {
+        // Entering Scoring phase from Commit - enable scoring
         newState.isScoringStep = true
+        newState.currentPhase = 3
+        return newState
+      }
+
+      if (nextPhaseIndex >= TURN_PHASES.length) {
+        // After Scoring phase (3), wrap back to Setup (0)
+        newState.isScoringStep = false
+        newState.currentPhase = 0
         return newState
       } else {
         newState.board.forEach(row => {

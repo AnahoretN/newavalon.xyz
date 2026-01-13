@@ -3,7 +3,7 @@ import React, { memo, useState, useCallback, useMemo, useRef, useEffect } from '
 import { GameMode } from '@/types'
 import type { GridSize } from '@/types'
 import type { ConnectionStatus } from '@/hooks/useGameState'
-import { TURN_PHASES, MAX_PLAYERS } from '@/constants'
+import { TURN_PHASES, MAX_PLAYERS, PLAYER_COLORS } from '@/constants'
 import { useLanguage } from '@/contexts/LanguageContext'
 import type { TranslationResource } from '@/locales/types'
 import { generateInviteLink } from '@/utils/inviteLinks'
@@ -29,16 +29,17 @@ interface HeaderProps {
   isHost: boolean;
   onSyncGame: () => void;
   currentPhase: number;
+  onSetPhase: (index: number) => void;
   onNextPhase: () => void;
   onPrevPhase: () => void;
-  onSetPhase: (index: number) => void;
+  activePlayerId: number | null;
+  playerColorMap: Map<number, string>;
   isAutoAbilitiesEnabled: boolean;
   onToggleAutoAbilities: (enabled: boolean) => void;
   isAutoDrawEnabled: boolean;
   onToggleAutoDraw: (enabled: boolean) => void;
   hideDummyCards: boolean;
   onToggleHideDummyCards: (enabled: boolean) => void;
-  isScoringStep?: boolean;
   currentRound?: number;
   turnNumber?: number;
 }
@@ -467,15 +468,17 @@ const Header = memo<HeaderProps>(({
   isHost,
   onSyncGame: _onSyncGame, // Currently unused in UI but may be needed later
   currentPhase,
+  onSetPhase,
   onNextPhase,
   onPrevPhase,
+  activePlayerId,
+  playerColorMap,
   isAutoAbilitiesEnabled,
   onToggleAutoAbilities,
   isAutoDrawEnabled,
   onToggleAutoDraw,
   hideDummyCards,
   onToggleHideDummyCards,
-  isScoringStep,
   currentRound = 1,
   turnNumber = 1,
 }) => {
@@ -533,7 +536,7 @@ const Header = memo<HeaderProps>(({
         </div>
 
         {/* Center-left: Round tracker (always visible, inactive until game starts) */}
-        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center" style={{ marginLeft: '-199px' }}>
+        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center" style={{ marginLeft: '-280px' }}>
           <RoundTracker
             currentRound={currentRound}
             turnNumber={turnNumber}
@@ -545,35 +548,48 @@ const Header = memo<HeaderProps>(({
           />
         </div>
 
-        {/* Center: Phase controls (always visible, strictly centered) */}
+        {/* Center: Phase display with all 4 phases and navigation arrows (always visible, strictly centered) */}
         <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center">
           <div className={`flex items-center bg-gray-800 rounded-lg p-1 border border-gray-700 shadow-md ${!isGameStarted ? 'opacity-50' : ''}`}>
             <button
               onClick={onPrevPhase}
               disabled={!isGameStarted}
-              className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50 mr-1"
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6 L8 12 L15 18 Z" /></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M15 6 L8 12 L15 18 Z" /></svg>
             </button>
-            <div className="bg-gray-800 text-white font-bold text-sm text-center px-2 min-w-[120px] uppercase">
-              {isScoringStep ? (
-                <span className="text-yellow-400 animate-pulse">{t('scoring')}</span>
-              ) : (
-                TURN_PHASES[currentPhase]
-              )}
-            </div>
+            {TURN_PHASES.map((phase, index) => {
+              const isCurrentPhase = currentPhase === index
+              // Get active player's color for current phase highlight
+              const activePlayerColor = activePlayerId !== null ? playerColorMap.get(activePlayerId) : undefined
+              const colorClasses = activePlayerColor ? PLAYER_COLORS[activePlayerColor as keyof typeof PLAYER_COLORS]?.bg : 'bg-yellow-500'
+              const bgClass = isCurrentPhase ? `${colorClasses} text-white` : 'text-gray-400 hover:text-white'
+              return (
+                <div
+                  key={phase}
+                  onClick={() => isGameStarted && onSetPhase(index)}
+                  className={`
+                    px-3 py-1.5 text-sm font-bold uppercase transition-all duration-200 cursor-pointer rounded
+                    ${isCurrentPhase ? '' : ''}
+                    ${bgClass}
+                  `}
+                >
+                  {phase}
+                </div>
+              )
+            })}
             <button
               onClick={onNextPhase}
               disabled={!isGameStarted}
-              className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-700 rounded transition-colors disabled:cursor-not-allowed disabled:opacity-50 ml-1"
             >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M9 6 L16 12 L9 18 Z" /></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M9 6 L16 12 L9 18 Z" /></svg>
             </button>
           </div>
         </div>
 
         {/* Center-right: Tokens & Counters */}
-        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center" style={{ marginLeft: '199px' }}>
+        <div className="absolute left-1/2 transform -translate-x-1/2 flex items-center" style={{ marginLeft: '280px' }}>
           <button
             onClick={onOpenTokensModal}
             className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded text-sm"
