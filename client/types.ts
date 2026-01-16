@@ -166,6 +166,15 @@ export interface HighlightData {
 }
 
 /**
+ * Data structure for deck selection effects (visible to all players).
+ */
+export interface DeckSelectionData {
+    playerId: number; // The player whose deck was selected
+    selectedByPlayerId: number; // The player who made the selection (active player)
+    timestamp: number;
+}
+
+/**
  * Data structure for floating text effects (e.g. damage, score).
  */
 export interface FloatingTextData {
@@ -214,6 +223,7 @@ export interface GameState {
   // Visual effects (synced across all clients)
   floatingTexts: FloatingTextData[]; // Array of floating texts to display
   highlights: HighlightData[]; // Array of cell highlights to display
+  deckSelections: DeckSelectionData[]; // Array of deck selection effects to display
 
   // Local spectator state (not synced with server)
   localPlayerId: number | null; // The player ID of the local client (null if spectator)

@@ -457,6 +457,18 @@ const App = memo(function App() {
 
   const handleDeckClick = useCallback((targetPlayerId: number) => {
     if (abilityMode?.mode === 'SELECT_DECK') {
+      // Add deck selection effect visible to all players
+      updateState(state => ({
+        ...state,
+        deckSelections: [
+          ...(state.deckSelections || []),
+          {
+            playerId: targetPlayerId,
+            selectedByPlayerId: gameState.activePlayerId ?? localPlayerId ?? 1,
+            timestamp: Date.now(),
+          },
+        ],
+      }))
       setTopDeckViewState({
         targetPlayerId,
         isLocked: true,
@@ -467,7 +479,7 @@ const App = memo(function App() {
       })
       setAbilityMode(null)
     }
-  }, [abilityMode])
+  }, [abilityMode, gameState.activePlayerId, localPlayerId, updateState])
 
   const handleTopDeckReorder = useCallback((playerId: number, newTopCards: Card[]) => {
     reorderTopDeck(playerId, newTopCards)
@@ -2083,6 +2095,7 @@ const App = memo(function App() {
               onDeckClick={handleDeckClick}
               isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
               hideDummyCards={hideDummyCards}
+              deckSelections={gameState.deckSelections}
             />
           </div>
         )}
@@ -2184,6 +2197,7 @@ const App = memo(function App() {
                     onDeckClick={handleDeckClick}
                     isDeckSelectable={abilityMode?.mode === 'SELECT_DECK'}
                     hideDummyCards={hideDummyCards}
+                    deckSelections={gameState.deckSelections}
                   />
                 </div>
               ))}

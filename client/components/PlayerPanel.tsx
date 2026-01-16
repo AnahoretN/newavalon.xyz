@@ -48,6 +48,7 @@ interface PlayerPanelProps {
   onDeckClick?: (playerId: number) => void;
   isDeckSelectable?: boolean;
   hideDummyCards?: boolean; // If true, hide dummy player cards like real players
+  deckSelections?: { playerId: number; selectedByPlayerId: number; timestamp: number }[];
 }
 
 const ColorPicker: React.FC<{ player: Player, canEditSettings: boolean, selectedColors: Set<PlayerColor>, onColorChange: (c: PlayerColor) => void, compact?: boolean }> = memo(({ player, canEditSettings, selectedColors, onColorChange, compact = false }) => {
@@ -215,6 +216,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   onDeckClick,
   isDeckSelectable,
   hideDummyCards = false,
+  deckSelections = [],
 }) => {
   const { t, resources } = useLanguage()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -308,10 +310,10 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {/* Deck */}
             <DropZone className="relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
               {(() => {
-                // Calculate deck highlight style matching the board highlight effect
-                const playerColorName = playerColorMap.get(player.id)
-                const rgb = playerColorName && PLAYER_COLOR_RGB[playerColorName]
-                  ? PLAYER_COLOR_RGB[playerColorName]
+                // Use active player's color for the selection effect (not the deck owner's color)
+                const activePlayerColorName = activePlayerId !== null && activePlayerId !== undefined ? playerColorMap.get(activePlayerId) : null
+                const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
+                  ? PLAYER_COLOR_RGB[activePlayerColorName]
                   : { r: 37, g: 99, b: 235 }
                 const glowRgb = {
                   r: Math.min(255, Math.round(rgb.r * 1.3)),
@@ -323,6 +325,19 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   border: '3px solid rgb(255, 255, 255)',
                 } : {}
 
+                // Find recent deck selection for this player (within last 1 second)
+                const now = Date.now()
+                const recentSelection = deckSelections?.find(
+                  ds => ds.playerId === player.id && (now - ds.timestamp) < 1000
+                )
+                // Use the selecting player's color for the ripple
+                const selectionColorName = recentSelection?.selectedByPlayerId
+                  ? playerColorMap.get(recentSelection.selectedByPlayerId)
+                  : null
+                const selectionRgb = selectionColorName && PLAYER_COLOR_RGB[selectionColorName]
+                  ? PLAYER_COLOR_RGB[selectionColorName]
+                  : rgb
+
                 return (
                   <div className="relative aspect-square">
                     {/* Highlight overlay - doesn't interfere with deck visibility */}
@@ -332,6 +347,18 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                         style={{
                           zIndex: 10,
                           background: `radial-gradient(circle at center, transparent 30%, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4) 100%)`,
+                        }}
+                      />
+                    )}
+                    {/* Ripple effect when deck is selected */}
+                    {recentSelection && (
+                      <div
+                        className="absolute inset-0 rounded pointer-events-none animate-deck-selection"
+                        style={{
+                          zIndex: 15,
+                          border: '3px solid',
+                          borderColor: `rgb(${selectionRgb.r}, ${selectionRgb.g}, ${selectionRgb.b})`,
+                          background: `radial-gradient(circle at center, transparent 20%, rgba(${selectionRgb.r}, ${selectionRgb.g}, ${selectionRgb.b}, 0.6) 100%)`,
                         }}
                       />
                     )}
@@ -520,10 +547,10 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             <div className="aspect-square relative">
               <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
                 {(() => {
-                  // Calculate deck highlight style matching the board highlight effect
-                  const playerColorName = playerColorMap.get(player.id)
-                  const rgb = playerColorName && PLAYER_COLOR_RGB[playerColorName]
-                    ? PLAYER_COLOR_RGB[playerColorName]
+                  // Use active player's color for the selection effect (not the deck owner's color)
+                  const activePlayerColorName = activePlayerId !== null && activePlayerId !== undefined ? playerColorMap.get(activePlayerId) : null
+                  const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
+                    ? PLAYER_COLOR_RGB[activePlayerColorName]
                     : { r: 37, g: 99, b: 235 }
                   const glowRgb = {
                     r: Math.min(255, Math.round(rgb.r * 1.3)),
@@ -535,6 +562,19 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                     border: '3px solid rgb(255, 255, 255)',
                   } : {}
 
+                  // Find recent deck selection for this player (within last 1 second)
+                  const now = Date.now()
+                  const recentSelection = deckSelections?.find(
+                    ds => ds.playerId === player.id && (now - ds.timestamp) < 1000
+                  )
+                  // Use the selecting player's color for the ripple
+                  const selectionColorName = recentSelection?.selectedByPlayerId
+                    ? playerColorMap.get(recentSelection.selectedByPlayerId)
+                    : null
+                  const selectionRgb = selectionColorName && PLAYER_COLOR_RGB[selectionColorName]
+                    ? PLAYER_COLOR_RGB[selectionColorName]
+                    : rgb
+
                   return (
                     <div className="relative w-full h-full">
                       {/* Highlight overlay - doesn't interfere with deck visibility */}
@@ -544,6 +584,18 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                           style={{
                             zIndex: 10,
                             background: `radial-gradient(circle at center, transparent 30%, rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0.4) 100%)`,
+                          }}
+                        />
+                      )}
+                      {/* Ripple effect when deck is selected */}
+                      {recentSelection && (
+                        <div
+                          className="absolute inset-0 rounded pointer-events-none animate-deck-selection"
+                          style={{
+                            zIndex: 15,
+                            border: '3px solid',
+                            borderColor: `rgb(${selectionRgb.r}, ${selectionRgb.g}, ${selectionRgb.b})`,
+                            background: `radial-gradient(circle at center, transparent 20%, rgba(${selectionRgb.r}, ${selectionRgb.g}, ${selectionRgb.b}, 0.6) 100%)`,
                           }}
                         />
                       )}

@@ -169,6 +169,15 @@ export interface HighlightData {
 }
 
 /**
+ * Data structure for deck selection effects (visible to all players).
+ */
+export interface DeckSelectionData {
+    playerId: number; // The player whose deck was selected
+    selectedByPlayerId: number; // The player who made the selection (active player)
+    timestamp: number;
+}
+
+/**
  * Data structure for floating text effects (e.g. damage, score).
  */
 export interface FloatingTextData {

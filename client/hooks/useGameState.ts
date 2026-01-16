@@ -278,6 +278,7 @@ export const useGameState = () => {
     isRoundEndModalOpen: false,
     floatingTexts: [],
     highlights: [],
+    deckSelections: [],
     localPlayerId: null,
     isSpectator: false,
   }), [])
@@ -1033,6 +1034,7 @@ export const useGameState = () => {
         isRoundEndModalOpen: false,
         floatingTexts: [],
         highlights: [],
+        deckSelections: [],
       }
     })
   }, [updateState, createDeck])
