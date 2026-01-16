@@ -144,15 +144,14 @@ export function handleNextPhase(ws, data) {
       return;
     }
 
-    // Get current phase index or default to 0
-    const currentPhaseIndex = gameState.currentPhaseIndex || 0;
-    const maxPhases = gameState.turnPhases?.length || 4;
+    // Get current phase or default to 0
+    const currentPhase = gameState.currentPhase || 0;
 
     // Advance to next phase, wrapping around
-    gameState.currentPhaseIndex = (currentPhaseIndex + 1) % maxPhases;
+    gameState.currentPhase = (currentPhase + 1) % 4;
 
     broadcastToGame(gameId, gameState);
-    logger.info(`Phase advanced to ${gameState.currentPhaseIndex} in game ${gameId}`);
+    logger.info(`Phase advanced to ${gameState.currentPhase} in game ${gameId}`);
   } catch (error) {
     logger.error('Failed to advance phase:', error);
   }
@@ -183,15 +182,14 @@ export function handlePrevPhase(ws, data) {
       return;
     }
 
-    // Get current phase index or default to 0
-    const currentPhaseIndex = gameState.currentPhaseIndex || 0;
-    const maxPhases = gameState.turnPhases?.length || 4;
+    // Get current phase or default to 0
+    const currentPhase = gameState.currentPhase || 0;
 
     // Go to previous phase, wrapping around
-    gameState.currentPhaseIndex = (currentPhaseIndex - 1 + maxPhases) % maxPhases;
+    gameState.currentPhase = (currentPhase - 1 + 4) % 4;
 
     broadcastToGame(gameId, gameState);
-    logger.info(`Phase retreated to ${gameState.currentPhaseIndex} in game ${gameId}`);
+    logger.info(`Phase retreated to ${gameState.currentPhase} in game ${gameId}`);
   } catch (error) {
     logger.error('Failed to retreat phase:', error);
   }
@@ -232,17 +230,15 @@ export function handleSetPhase(ws, data) {
       return;
     }
 
-    const maxPhases = gameState.turnPhases?.length || 4;
-
-    if (numericPhaseIndex < 0 || numericPhaseIndex >= maxPhases) {
+    if (numericPhaseIndex < 0 || numericPhaseIndex >= 4) {
       ws.send(JSON.stringify({
         type: 'ERROR',
-        message: `Invalid phase index. Must be between 0 and ${maxPhases - 1}`
+        message: 'Invalid phase index. Must be between 0 and 3'
       }));
       return;
     }
 
-    gameState.currentPhaseIndex = numericPhaseIndex;
+    gameState.currentPhase = numericPhaseIndex;
     broadcastToGame(gameId, gameState);
     logger.info(`Phase set to ${numericPhaseIndex} in game ${gameId}`);
   } catch (error) {

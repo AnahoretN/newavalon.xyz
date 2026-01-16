@@ -1749,19 +1749,108 @@ export const useGameState = () => {
 
       if (nextPhaseIndex >= TURN_PHASES.length) {
         // After Scoring phase (3), wrap back to Setup (0)
+        // This is the end of a full turn - check for round/match victory
         newState.isScoringStep = false
         newState.currentPhase = 0
-        // Reset readySetup for active player's cards when entering Setup phase
+
+        // Remove Stun from finishing player's cards
         if (activePlayerId !== undefined) {
           newState.board.forEach(row => {
             row.forEach(cell => {
+              if (cell.card?.ownerId === activePlayerId && cell.card.statuses) {
+                const stunIndex = cell.card.statuses.findIndex(s => s.type === 'Stun')
+                if (stunIndex !== -1) {
+                  cell.card.statuses.splice(stunIndex, 1)
+                }
+              }
+            })
+          })
+          // Recalculate statuses after Stun removal
+          newState.board = recalculateBoardStatuses(newState)
+        }
+
+        // Move to next player
+        let nextPlayerId = activePlayerId
+        if (nextPlayerId !== undefined) {
+          const sortedPlayers = [...newState.players].sort((a, b) => a.id - b.id)
+          const currentIndex = sortedPlayers.findIndex(p => p.id === nextPlayerId)
+          if (currentIndex !== -1) {
+            const nextIndex = (currentIndex + 1) % sortedPlayers.length
+            nextPlayerId = sortedPlayers[nextIndex].id
+          }
+        }
+        newState.activePlayerId = nextPlayerId
+
+        // Reset phase-specific ready statuses for the new active player
+        if (nextPlayerId !== undefined) {
+          newState.board.forEach(row => {
+            row.forEach(cell => {
               const card = cell.card
-              if (card && card.ownerId === activePlayerId) {
-                resetPhaseReadyStatuses(card, activePlayerId)
+              if (card && card.ownerId === nextPlayerId) {
+                resetPhaseReadyStatuses(card, nextPlayerId)
               }
             })
           })
         }
+
+        // Check for round/match victory when returning to starting player
+        if (newState.startingPlayerId !== undefined && nextPlayerId === newState.startingPlayerId) {
+          const currentThreshold = (newState.currentRound * 10) + 10
+          const isFinalRoundLimit = newState.currentRound === 5 && newState.turnNumber >= 10
+          let maxScore = -Infinity
+          newState.players.forEach(p => {
+            if (p.score > maxScore) {
+              maxScore = p.score
+            }
+          })
+          const thresholdMet = maxScore >= currentThreshold
+
+          if (thresholdMet || isFinalRoundLimit) {
+            const winners = newState.players.filter(p => p.score === maxScore).map(p => p.id)
+            newState.roundWinners[newState.currentRound] = winners
+            const allWins = Object.values(newState.roundWinners).flat()
+            const winCounts = allWins.reduce((acc, id) => {
+              acc[id] = (acc[id] || 0) + 1; return acc
+            }, {} as Record<number, number>)
+            const gameWinners = Object.keys(winCounts).filter(id => winCounts[Number(id)] >= 2).map(id => Number(id))
+            if (gameWinners.length > 0) {
+              newState.gameWinner = gameWinners[0]
+            }
+            newState.isRoundEndModalOpen = true
+          } else {
+            newState.turnNumber += 1
+          }
+        }
+
+        // Clear enteredThisTurn flags
+        newState.board.forEach(row => {
+          row.forEach(cell => {
+            if (cell.card) {
+              delete cell.card.enteredThisTurn
+            }
+          })
+        })
+
+        // Handle Resurrected expiration
+        newState.board.forEach(row => {
+          row.forEach(cell => {
+            if (cell.card?.statuses) {
+              const resurrectedIdx = cell.card.statuses.findIndex(s => s.type === 'Resurrected')
+              if (resurrectedIdx !== -1) {
+                const addedBy = cell.card.statuses[resurrectedIdx].addedByPlayerId
+                cell.card.statuses.splice(resurrectedIdx, 1)
+                if (cell.card.baseId !== 'luciusTheImmortal') {
+                  cell.card.statuses.push({ type: 'Stun', addedByPlayerId: addedBy })
+                  cell.card.statuses.push({ type: 'Stun', addedByPlayerId: addedBy })
+                }
+              }
+            }
+          })
+        })
+
+        // Recalculate again as Resurrected removal/Stun addition changes auras
+        newState.board = recalculateBoardStatuses(newState)
+
         return newState
       } else {
         // Reset phase-specific ready statuses when entering the phase
