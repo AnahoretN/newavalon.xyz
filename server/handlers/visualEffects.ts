@@ -43,6 +43,7 @@ function broadcastVisualEffect(
   // Send to all connected clients associated with this game (including sender)
   if (wssInstance && wssInstance.clients) {
     let sentCount = 0
+    const allClients = wssInstance.clients.size
     wssInstance.clients.forEach((client: ExtendedWebSocket) => {
       if (client.readyState === 1 && clientGameMap.get(client) === gameId) {
         try {
@@ -53,7 +54,7 @@ function broadcastVisualEffect(
         }
       }
     });
-    logger.debug(`Broadcast ${messageType} to ${sentCount} clients in game ${gameId}`)
+    logger.info(`[Broadcast] ${messageType}: ${sentCount}/${allClients} clients in game ${gameId}`)
   } else {
     logger.warn(`Cannot broadcast ${messageType}: wssInstance=${!!wssInstance}, clients=${!!wssInstance?.clients}`)
   }
@@ -401,6 +402,93 @@ export function handleSyncHighlights(ws: ExtendedWebSocket, data: any) {
 }
 
 /**
+ * Handle SYNC_VALID_TARGETS message
+ * Broadcasts valid hand targets and deck selectability to all clients in the game
+ */
+export function handleSyncValidTargets(ws: ExtendedWebSocket, data: any) {
+  try {
+    // Security: Validate message size
+    if (!validateMessageSize(JSON.stringify(data))) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Message size exceeds limit'
+      }));
+      return;
+    }
+
+    // Input validation
+    if (!data || typeof data !== 'object') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid data format'
+      }));
+      return;
+    }
+
+    const { gameId, playerId, validHandTargets, isDeckSelectable } = data;
+
+    if (!gameId || typeof gameId !== 'string') {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing gameId'
+      }));
+      return;
+    }
+
+    if (playerId === undefined || playerId === null) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Invalid or missing playerId'
+      }));
+      return;
+    }
+
+    // Security: Sanitize gameId
+    const sanitizedGameId = sanitizeString(gameId);
+
+    const gameState = getGameState(sanitizedGameId);
+
+    if (!gameState) {
+      ws.send(JSON.stringify({
+        type: 'ERROR',
+        message: 'Game not found'
+      }));
+      return;
+    }
+
+    // Broadcast valid targets to ALL OTHER clients (not the sender)
+    const message = JSON.stringify({
+      type: 'SYNC_VALID_TARGETS',
+      playerId,
+      validHandTargets: validHandTargets || [],
+      isDeckSelectable: isDeckSelectable || false
+    });
+
+    const wssInstance = getWssInstance();
+    const clientGameMap = getClientGameMap();
+
+    if (wssInstance && wssInstance.clients) {
+      let sentCount = 0
+      wssInstance.clients.forEach((client: ExtendedWebSocket) => {
+        // Send to all clients in this game EXCEPT the sender
+        if (client !== ws && client.readyState === 1 && clientGameMap.get(client) === sanitizedGameId) {
+          try {
+            client.send(message);
+            sentCount++
+          } catch (err: any) {
+            logger.error(`Error sending SYNC_VALID_TARGETS to client:`, err);
+          }
+        }
+      });
+      logger.info(`[SyncValidTargets] Player ${playerId} synced targets to ${sentCount} clients in game ${sanitizedGameId}`)
+    }
+
+  } catch (err: any) {
+    logger.error('Failed to sync valid targets:', err);
+  }
+}
+
+/**
  * Handle TRIGGER_DECK_SELECTION message
  * Broadcasts a deck selection effect to all clients in the game
  */
@@ -455,10 +543,9 @@ export function handleTriggerDeckSelection(ws: ExtendedWebSocket, data: any) {
       return;
     }
 
+    logger.info(`[DECK_SELECTION] Broadcasting to game ${sanitizedGameId}, data: ${JSON.stringify(deckSelectionData)}`);
     // Broadcast the deck selection event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'DECK_SELECTION_TRIGGERED', { deckSelectionData });
-
-    logger.debug(`Deck selection triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger deck selection:', err);
   }
@@ -519,10 +606,9 @@ export function handleTriggerHandCardSelection(ws: ExtendedWebSocket, data: any)
       return;
     }
 
+    logger.info(`[HAND_CARD_SELECTION] Broadcasting to game ${sanitizedGameId}, data: ${JSON.stringify(handCardSelectionData)}`);
     // Broadcast the hand card selection event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'HAND_CARD_SELECTION_TRIGGERED', { handCardSelectionData });
-
-    logger.debug(`Hand card selection triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger hand card selection:', err);
   }

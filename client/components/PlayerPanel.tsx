@@ -51,6 +51,7 @@ interface PlayerPanelProps {
   deckSelections?: { playerId: number; selectedByPlayerId: number; timestamp: number }[];
   handCardSelections?: { playerId: number; cardIndex: number; selectedByPlayerId: number; timestamp: number }[];
   cursorStack?: CursorStackState | null;
+  remoteValidTargets?: { playerId: number, validHandTargets: { playerId: number, cardIndex: number }[], isDeckSelectable: boolean } | null;
 }
 
 const ColorPicker: React.FC<{ player: Player, canEditSettings: boolean, selectedColors: Set<PlayerColor>, onColorChange: (c: PlayerColor) => void, compact?: boolean }> = memo(({ player, canEditSettings, selectedColors, onColorChange, compact = false }) => {
@@ -221,6 +222,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
   deckSelections = [],
   handCardSelections = [],
   cursorStack = null,
+  remoteValidTargets = null,
 }) => {
   const { t, resources } = useLanguage()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -315,8 +317,15 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             {/* Deck */}
             <DropZone className="relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
               {(() => {
+                // Check if deck is selectable (either from local player or from remote player)
+                const isLocalDeckSelectable = isDeckSelectable
+                const isRemoteDeckSelectable = remoteValidTargets?.isDeckSelectable ?? false
+                const isDeckSelectableActive = isLocalDeckSelectable || isRemoteDeckSelectable
+
                 // Use active player's color for the selection effect (not the deck owner's color)
-                const activePlayerColorName = activePlayerId !== null && activePlayerId !== undefined ? playerColorMap.get(activePlayerId) : null
+                // For remote targets, use the remote player's color
+                const targetPlayerId = isRemoteDeckSelectable && remoteValidTargets ? remoteValidTargets.playerId : activePlayerId
+                const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
                 const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
                   ? PLAYER_COLOR_RGB[activePlayerColorName]
                   : { r: 37, g: 99, b: 235 }
@@ -325,7 +334,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   g: Math.min(255, Math.round(rgb.g * 1.3)),
                   b: Math.min(255, Math.round(rgb.b * 1.3)),
                 }
-                const deckHighlightStyle = isDeckSelectable ? {
+                const deckHighlightStyle = isDeckSelectableActive ? {
                   boxShadow: `0 0 12px 2px rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.5)`,
                   border: '3px solid rgb(255, 255, 255)',
                 } : {}
@@ -346,7 +355,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                 return (
                   <div className="relative aspect-square">
                     {/* Highlight overlay - doesn't interfere with deck visibility */}
-                    {isDeckSelectable && (
+                    {isDeckSelectableActive && (
                       <div
                         className="absolute inset-0 rounded pointer-events-none animate-glow-pulse"
                         style={{
@@ -447,10 +456,15 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
           <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'hand', playerId: player.id })} className="flex-grow bg-gray-800 rounded-lg p-2 overflow-y-scroll border border-gray-700 custom-scrollbar">
             <div className="flex flex-col gap-[2px]">
               {player.hand.map((card, index) => {
-                const isTarget = validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
+                // Check if this card is a valid target (either from local player or from remote player)
+                const isLocalTarget = validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
+                const isRemoteTarget = remoteValidTargets?.validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
+                const isTarget = isLocalTarget || isRemoteTarget
 
                 // Use active player's color for the selection effect (not the card owner's color)
-                const activePlayerColorName = activePlayerId !== null && activePlayerId !== undefined ? playerColorMap.get(activePlayerId) : null
+                // For remote targets, use the remote player's color
+                const targetPlayerId = isRemoteTarget && remoteValidTargets ? remoteValidTargets.playerId : activePlayerId
+                const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
                 const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
                   ? PLAYER_COLOR_RGB[activePlayerColorName]
                   : { r: 37, g: 99, b: 235 }
@@ -601,8 +615,15 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             <div className="aspect-square relative">
               <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
                 {(() => {
+                  // Check if deck is selectable (either from local player or from remote player)
+                  const isLocalDeckSelectable = isDeckSelectable
+                  const isRemoteDeckSelectable = remoteValidTargets?.isDeckSelectable ?? false
+                  const isDeckSelectableActive = isLocalDeckSelectable || isRemoteDeckSelectable
+
                   // Use active player's color for the selection effect (not the deck owner's color)
-                  const activePlayerColorName = activePlayerId !== null && activePlayerId !== undefined ? playerColorMap.get(activePlayerId) : null
+                  // For remote targets, use the remote player's color
+                  const targetPlayerId = isRemoteDeckSelectable && remoteValidTargets ? remoteValidTargets.playerId : activePlayerId
+                  const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
                   const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
                     ? PLAYER_COLOR_RGB[activePlayerColorName]
                     : { r: 37, g: 99, b: 235 }
@@ -611,7 +632,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                     g: Math.min(255, Math.round(rgb.g * 1.3)),
                     b: Math.min(255, Math.round(rgb.b * 1.3)),
                   }
-                  const deckHighlightStyle = isDeckSelectable ? {
+                  const deckHighlightStyle = isDeckSelectableActive ? {
                     boxShadow: `0 0 12px 2px rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.5)`,
                     border: '3px solid rgb(255, 255, 255)',
                   } : {}
@@ -632,7 +653,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   return (
                     <div className="relative w-full h-full">
                       {/* Highlight overlay - doesn't interfere with deck visibility */}
-                      {isDeckSelectable && (
+                      {isDeckSelectableActive && (
                         <div
                           className="absolute inset-0 rounded pointer-events-none animate-glow-pulse"
                           style={{
@@ -736,10 +757,15 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             className="grid grid-cols-6 gap-1 overflow-y-scroll custom-scrollbar flex-grow content-start min-h-[30px]"
           >
             {player.hand.map((card, index) => {
-              const isTarget = validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
+              // Check if this card is a valid target (either from local player or from remote player)
+              const isLocalTarget = validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
+              const isRemoteTarget = remoteValidTargets?.validHandTargets?.some(t => t.playerId === player.id && t.cardIndex === index)
+              const isTarget = isLocalTarget || isRemoteTarget
 
               // Use active player's color for the selection effect (not the card owner's color)
-              const activePlayerColorName = activePlayerId !== null && activePlayerId !== undefined ? playerColorMap.get(activePlayerId) : null
+              // For remote targets, use the remote player's color
+              const targetPlayerId = isRemoteTarget && remoteValidTargets ? remoteValidTargets.playerId : activePlayerId
+              const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
               const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
                 ? PLAYER_COLOR_RGB[activePlayerColorName]
                 : { r: 37, g: 99, b: 235 }

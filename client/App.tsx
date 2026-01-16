@@ -104,6 +104,8 @@ const App = memo(function App() {
     triggerNoTarget,
     triggerDeckSelection,
     syncHighlights,
+    syncValidTargets,
+    remoteValidTargets,
     nextPhase,
     prevPhase,
     setPhase,
@@ -1021,6 +1023,31 @@ const App = memo(function App() {
 
     sentHighlightsHash.current = currentHash
   }, [abilityMode, abilityMode?.mode, abilityMode?.sourceCoords, cursorStack, cursorStack?.type, cursorStack?.sourceCoords, gameState.activePlayerId, validTargets, syncHighlights, localHighlights, boardSize])
+
+  // Sync valid hand targets and deck selectability to other players
+  useEffect(() => {
+    const activePlayerId = gameState.activePlayerId
+
+    // Only the active player should broadcast valid targets
+    if (!activePlayerId || activePlayerId !== localPlayerId) {
+      return
+    }
+
+    // Check if we have valid hand targets or deck selectability
+    const hasValidHandTargets = validHandTargets.length > 0
+    const isDeckSelectableMode = abilityMode?.mode === 'SELECT_DECK'
+
+    if (!hasValidHandTargets && !isDeckSelectableMode) {
+      // No valid targets to sync - could send empty array to clear, but for now just skip
+      return
+    }
+
+    // Sync valid targets to other players
+    syncValidTargets({
+      validHandTargets,
+      isDeckSelectable: isDeckSelectableMode,
+    })
+  }, [abilityMode, abilityMode?.mode, validHandTargets, gameState.activePlayerId, localPlayerId, syncValidTargets])
 
   useEffect(() => {
     if (latestHighlight) {
@@ -2094,6 +2121,7 @@ const App = memo(function App() {
               deckSelections={latestDeckSelections}
               handCardSelections={latestHandCardSelections}
               cursorStack={cursorStack}
+              remoteValidTargets={remoteValidTargets}
             />
           </div>
         )}
@@ -2198,6 +2226,7 @@ const App = memo(function App() {
                     deckSelections={latestDeckSelections}
                     handCardSelections={latestHandCardSelections}
                     cursorStack={cursorStack}
+                    remoteValidTargets={remoteValidTargets}
                   />
                 </div>
               ))}

@@ -294,6 +294,12 @@ export const useGameState = () => {
   const [latestNoTarget, setLatestNoTarget] = useState<{coords: {row: number, col: number}, timestamp: number} | null>(null)
   const [latestDeckSelections, setLatestDeckSelections] = useState<DeckSelectionData[]>([])
   const [latestHandCardSelections, setLatestHandCardSelections] = useState<HandCardSelectionData[]>([])
+  // Valid targets received from other players (for synchronized targeting UI)
+  const [remoteValidTargets, setRemoteValidTargets] = useState<{
+    playerId: number
+    validHandTargets: { playerId: number, cardIndex: number }[]
+    isDeckSelectable: boolean
+  } | null>(null)
   const [contentLoaded, setContentLoaded] = useState(!!rawJsonData)
 
   const ws = useRef<WebSocket | null>(null)
@@ -553,16 +559,19 @@ export const useGameState = () => {
             console.warn('Server Error:', data.message)
           }
         } else if (data.type === 'HIGHLIGHT_TRIGGERED') {
+          console.log('[Visual Effects] HIGHLIGHT_TRIGGERED received:', data.highlightData)
           setLatestHighlight(data.highlightData)
         } else if (data.type === 'NO_TARGET_TRIGGERED') {
           setLatestNoTarget({ coords: data.coords, timestamp: data.timestamp })
         } else if (data.type === 'DECK_SELECTION_TRIGGERED') {
+          console.log('[Visual Effects] DECK_SELECTION_TRIGGERED received:', data.deckSelectionData)
           setLatestDeckSelections(prev => [...prev, data.deckSelectionData])
           // Auto-remove after 1 second
           setTimeout(() => {
             setLatestDeckSelections(prev => prev.filter(ds => ds.timestamp !== data.deckSelectionData.timestamp))
           }, 1000)
         } else if (data.type === 'HAND_CARD_SELECTION_TRIGGERED') {
+          console.log('[Visual Effects] HAND_CARD_SELECTION_TRIGGERED received:', data.handCardSelectionData)
           setLatestHandCardSelections(prev => [...prev, data.handCardSelectionData])
           // Auto-remove after 1 second
           setTimeout(() => {
@@ -585,6 +594,21 @@ export const useGameState = () => {
           // Ignore highlights from ourselves to avoid overwriting our local state
           if (data.playerId !== localPlayerIdRef.current) {
             window.dispatchEvent(new CustomEvent('syncHighlights', { detail: data.highlights }))
+          }
+        } else if (data.type === 'SYNC_VALID_TARGETS') {
+          // Receive valid targets from other players
+          // Ignore targets from ourselves to avoid overwriting our local state
+          if (data.playerId !== localPlayerIdRef.current) {
+            console.log('[Visual Effects] SYNC_VALID_TARGETS received from player', data.playerId, ':', data)
+            setRemoteValidTargets({
+              playerId: data.playerId,
+              validHandTargets: data.validHandTargets || [],
+              isDeckSelectable: data.isDeckSelectable || false,
+            })
+            // Auto-clear after 10 seconds to prevent stale data
+            setTimeout(() => {
+              setRemoteValidTargets(prev => prev?.playerId === data.playerId ? null : prev)
+            }, 10000)
           }
         } else if (!data.type && data.players && data.board) {
           // Only update gameState if it's a valid game state (no type, but has required properties)
@@ -2543,11 +2567,12 @@ export const useGameState = () => {
 
     // Also broadcast to other players via WebSocket
     if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
-      ws.current.send(JSON.stringify({
+      const message = {
         type: 'TRIGGER_DECK_SELECTION',
         gameId: gameStateRef.current.gameId,
         deckSelectionData,
-      }))
+      }
+      ws.current.send(JSON.stringify(message))
     }
 
     // Auto-remove after 1 second
@@ -2569,17 +2594,33 @@ export const useGameState = () => {
 
     // Also broadcast to other players via WebSocket
     if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
-      ws.current.send(JSON.stringify({
+      const message = {
         type: 'TRIGGER_HAND_CARD_SELECTION',
         gameId: gameStateRef.current.gameId,
         handCardSelectionData,
-      }))
+      }
+      ws.current.send(JSON.stringify(message))
     }
 
     // Auto-remove after 1 second
     setTimeout(() => {
       setLatestHandCardSelections(prev => prev.filter(cs => cs.timestamp !== handCardSelectionData.timestamp))
     }, 1000)
+  }, [])
+
+  const syncValidTargets = useCallback((validTargetsData: {
+    validHandTargets: { playerId: number, cardIndex: number }[]
+    isDeckSelectable: boolean
+  }) => {
+    // Broadcast valid targets to other players via WebSocket
+    if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
+      ws.current.send(JSON.stringify({
+        type: 'SYNC_VALID_TARGETS',
+        gameId: gameStateRef.current.gameId,
+        playerId: localPlayerIdRef.current,
+        ...validTargetsData,
+      }))
+    }
   }, [])
 
   const markAbilityUsed = useCallback((boardCoords: { row: number, col: number }, _isDeployAbility?: boolean, _setDeployAttempted?: boolean, readyStatusToRemove?: string) => {
@@ -3033,6 +3074,8 @@ export const useGameState = () => {
     triggerDeckSelection,
     triggerHandCardSelection,
     syncHighlights,
+    syncValidTargets,
+    remoteValidTargets,
     nextPhase,
     prevPhase,
     setPhase,
