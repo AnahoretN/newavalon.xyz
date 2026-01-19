@@ -989,6 +989,21 @@ const App = memo(function App() {
       return
     }
 
+    // Determine the owner of the current mode for highlight color
+    // The highlights should belong to the card/ability owner, not the active player
+    let highlightOwnerId: number
+    if (abilityMode?.sourceCard?.ownerId !== undefined) {
+      highlightOwnerId = abilityMode.sourceCard.ownerId
+    } else if (cursorStack?.sourceCard?.ownerId !== undefined) {
+      highlightOwnerId = cursorStack.sourceCard.ownerId
+    } else if (playMode?.card?.ownerId !== undefined) {
+      highlightOwnerId = playMode.card.ownerId
+    } else if (commandModalCard?.ownerId !== undefined) {
+      highlightOwnerId = commandModalCard.ownerId
+    } else {
+      highlightOwnerId = activePlayerId ?? 0
+    }
+
     // Create a hash of current state to detect changes
     const mode = abilityMode?.mode || cursorStack?.type || (playMode ? 'playMode' : '') || (commandModalCard ? 'commandModal' : '') || 'none'
     const sourceCoords = abilityMode?.sourceCoords || cursorStack?.sourceCoords
@@ -1043,7 +1058,7 @@ const App = memo(function App() {
             type: 'cell',
             row: abilityMode.sourceCoords.row,
             col: c,
-            playerId: activePlayerId,
+            playerId: highlightOwnerId,
             timestamp,
           })
         }
@@ -1053,7 +1068,7 @@ const App = memo(function App() {
             type: 'cell',
             row: r,
             col: abilityMode.sourceCoords.col,
-            playerId: activePlayerId,
+            playerId: highlightOwnerId,
             timestamp,
           })
         }
@@ -1066,7 +1081,7 @@ const App = memo(function App() {
           type: 'cell',
           row: target.row,
           col: target.col,
-          playerId: activePlayerId,
+          playerId: highlightOwnerId,
           timestamp,
         })
       })
