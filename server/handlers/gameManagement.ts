@@ -128,31 +128,38 @@ export function handleUpdateState(ws, data) {
 
       // Update game state with client's state
       const clientPlayers = updatedGameState.players;
-      const serverPlayersBeforeUpdate = existingGameState.players;
 
-      // Check if active player changed (simple rule: new player = draw card)
-      const playerChanged = clientActivePlayerId !== undefined && clientActivePlayerId !== previousActivePlayerId;
+      // Check if client is requesting Draw Phase (phase -1) with an active player
+      // Universal rule: phase=-1 + activePlayerId = draw 1 card for that player
+      // This works for ALL players - first time, same player, different player, doesn't matter
+      // IMPORTANT: Only draw if server phase is NOT already 0 (prevents duplicate draws from rapid client updates)
+      const clientRequestsDraw = clientPhase === -1 && clientActivePlayerId !== null && clientActivePlayerId !== undefined && previousPhase !== 0;
 
       // Debug logging
       if (clientActivePlayerId !== undefined && clientActivePlayerId !== previousActivePlayerId) {
-        logger.info(`[UpdateState] Player change detected: previous=${previousActivePlayerId}, client=${clientActivePlayerId}, changed=${playerChanged}`);
+        logger.info(`[UpdateState] Player change: previous=${previousActivePlayerId}, client=${clientActivePlayerId}, phase=${clientPhase}`);
       } else if (clientActivePlayerId === undefined) {
         logger.info(`[UpdateState] No clientActivePlayerId in update`);
-      } else if (clientActivePlayerId === previousActivePlayerId) {
-        logger.info(`[UpdateState] Player same: ${clientActivePlayerId}, no draw`);
+      } else if (clientPhase === -1 && previousPhase !== 0) {
+        logger.info(`[UpdateState] Draw phase requested for player ${clientActivePlayerId} (server phase=${previousPhase})`);
+      } else if (clientPhase === -1 && previousPhase === 0) {
+        logger.info(`[UpdateState] Draw phase SKIPPED for player ${clientActivePlayerId} - server already in phase 0 (draw already happened)`);
       }
 
       // Perform draw FIRST on existing state (before any client data is applied)
-      // CRITICAL: Only draw if player changed. Phase=-1 alone is NOT enough to trigger draw.
-      // This prevents duplicate draws when client sends multiple rapid UPDATE_STATE with phase=-1.
+      // Universal: phase=-1 with activePlayerId AND server not in phase 0 = draw for that player
       let drawnPlayerId: number | null = null;
-      if (playerChanged && clientActivePlayerId !== null) {
-        logger.info(`[UpdateState] 🎯 Triggering draw - playerChanged=${playerChanged}, BEFORE: hand=${existingGameState.players.find(p => p.id === clientActivePlayerId)?.hand?.length || 0}`);
+      if (clientRequestsDraw) {
+        const playerBeforeDraw = existingGameState.players.find(p => p.id === clientActivePlayerId);
+        logger.info(`[UpdateState] 🎯 Triggering draw for player ${clientActivePlayerId}, BEFORE: hand=${playerBeforeDraw?.hand?.length || 0}, deck=${playerBeforeDraw?.deck?.length || 0}`);
         existingGameState.activePlayerId = clientActivePlayerId;
-        existingGameState.currentPhase = 0; // Set to Setup after draw
         performDrawPhase(existingGameState);
         drawnPlayerId = clientActivePlayerId;
-        logger.info(`[UpdateState] 🎯 AFTER performDrawPhase: hand=${existingGameState.players.find(p => p.id === clientActivePlayerId)?.hand?.length || 0}`);
+        const playerAfterDraw = existingGameState.players.find(p => p.id === clientActivePlayerId);
+        logger.info(`[UpdateState] 🎯 AFTER performDrawPhase: hand=${playerAfterDraw?.hand?.length || 0}, deck=${playerAfterDraw?.deck?.length || 0}`);
+      } else if (clientActivePlayerId !== null && clientActivePlayerId !== undefined) {
+        // No draw requested, just set the active player
+        existingGameState.activePlayerId = clientActivePlayerId;
       }
 
       // Save server players AFTER draw (so we have the updated hand/deck)
@@ -169,6 +176,8 @@ export function handleUpdateState(ws, data) {
       }
 
       // Merge players: for the drawn player, preserve server's hand/deck with the drawn card
+      // IMPORTANT: Also preserve server's boardHistory to prevent stale client state from overwriting
+      // the correct order of played cards (which affects LastPlayed status)
       if (clientPlayers) {
         const mergedPlayers: any[] = [];
 
@@ -179,17 +188,18 @@ export function handleUpdateState(ws, data) {
             // For others, use client's data
             const preserveServerCards = clientPlayer.id === drawnPlayerId;
 
-            // Special case: if server has more cards in hand than client, preserve server's hand
-            // This handles the case where client sends stale data after draw
-            const serverHasMoreCards = serverPlayerAfterDraw.hand.length > clientPlayer.hand.length;
-            const preserveHandDueToSize = serverHasMoreCards && clientPlayer.id === drawnPlayerId;
+            // Preserve server's boardHistory if it's longer (has more recent plays)
+            // This prevents stale client state from overwriting correct LastPlayed order
+            const serverHasMoreHistory = serverPlayerAfterDraw.boardHistory &&
+              serverPlayerAfterDraw.boardHistory.length > (clientPlayer.boardHistory?.length || 0);
 
             mergedPlayers.push({
               ...serverPlayerAfterDraw,
               ...clientPlayer,
-              hand: (preserveServerCards || preserveHandDueToSize) ? serverPlayerAfterDraw.hand : clientPlayer.hand,
-              deck: (preserveServerCards || preserveHandDueToSize) ? serverPlayerAfterDraw.deck : clientPlayer.deck,
+              hand: preserveServerCards ? serverPlayerAfterDraw.hand : clientPlayer.hand,
+              deck: preserveServerCards ? serverPlayerAfterDraw.deck : clientPlayer.deck,
               discard: clientPlayer.discard || serverPlayerAfterDraw.discard || [],
+              boardHistory: serverHasMoreHistory ? serverPlayerAfterDraw.boardHistory : clientPlayer.boardHistory,
             });
           } else {
             // New player (e.g., dummy added) - use client's data
