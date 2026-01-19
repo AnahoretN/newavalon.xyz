@@ -133,6 +133,7 @@ export function handleUpdateState(ws, data) {
       // Universal rule: phase=-1 + activePlayerId = draw 1 card for that player
       // This works for ALL players - first time, same player, different player, doesn't matter
       // IMPORTANT: Only draw if server phase is NOT already 0 (prevents duplicate draws from rapid client updates)
+      // OR if server IS in phase 0 but client sent -1 (stale state from another client's draw) - just restore phase, don't draw again
       const clientRequestsDraw = clientPhase === -1 && clientActivePlayerId !== null && clientActivePlayerId !== undefined && previousPhase !== 0;
 
       // Debug logging
@@ -143,7 +144,7 @@ export function handleUpdateState(ws, data) {
       } else if (clientPhase === -1 && previousPhase !== 0) {
         logger.info(`[UpdateState] Draw phase requested for player ${clientActivePlayerId} (server phase=${previousPhase})`);
       } else if (clientPhase === -1 && previousPhase === 0) {
-        logger.info(`[UpdateState] Draw phase SKIPPED for player ${clientActivePlayerId} - server already in phase 0 (draw already happened)`);
+        logger.info(`[UpdateState] Stale phase -1 from client for player ${clientActivePlayerId} - server already in phase 0, will restore phase 0 without drawing`);
       }
 
       // Perform draw FIRST on existing state (before any client data is applied)
@@ -168,11 +169,16 @@ export function handleUpdateState(ws, data) {
       // Now update the game state with client's data (except for hand/deck of drawn player)
       Object.assign(existingGameState, updatedGameState);
 
-      // IMPORTANT: If we just performed a draw, restore phase to 0 (Setup)
-      // Object.assign above may have overwritten it with client's phase (-1)
-      if (drawnPlayerId !== null) {
+      // IMPORTANT: Restore phase to 0 if we just performed a draw OR if server phase was 0 but client sent -1
+      // This prevents stale client state (phase=-1 from another client's draw) from triggering duplicate draws
+      // Object.assign above may have overwritten the server's phase with client's stale phase (-1)
+      if (drawnPlayerId !== null || (previousPhase === 0 && existingGameState.currentPhase === -1)) {
         existingGameState.currentPhase = 0;
-        logger.info(`[UpdateState] Restored phase to 0 after draw for player ${drawnPlayerId}`);
+        if (drawnPlayerId !== null) {
+          logger.info(`[UpdateState] Restored phase to 0 after draw for player ${drawnPlayerId}`);
+        } else {
+          logger.info(`[UpdateState] Restored phase to 0 - server was in phase 0 but client sent stale phase -1`);
+        }
       }
 
       // Merge players: for the drawn player, preserve server's hand/deck with the drawn card
