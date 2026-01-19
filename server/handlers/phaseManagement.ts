@@ -314,6 +314,7 @@ export function handleSetPhase(ws, data) {
     const previousPhase = gameState.currentPhase;
 
     // Draw phase (-1) triggers auto-draw and transitions to Setup (0)
+    // NOTE: This is kept for manual phase control via SET_PHASE message
     if (numericPhaseIndex === -1) {
       logger.info(`[SetPhase] Entering Draw Phase (-1) from phase ${previousPhase}`);
       gameState.currentPhase = -1;
@@ -324,17 +325,9 @@ export function handleSetPhase(ws, data) {
       return;
     }
 
-    // For regular phases (0-3)
+    // For regular phases (0-3), just set the phase directly
+    // Auto-draw is now handled by UPDATE_STATE when activePlayerId changes
     gameState.currentPhase = numericPhaseIndex;
-
-    // If entering Setup from a non-Setup phase (and not from Draw), trigger Draw Phase
-    // But NOT if we're coming from Draw Phase (-1) - this prevents double-draw
-    const isEnteringSetup = numericPhaseIndex === 0 && previousPhase !== 0 && previousPhase !== -1;
-    if (isEnteringSetup) {
-      logger.info(`[SetPhase] Entering Setup (0) from phase ${previousPhase}, triggering Draw Phase`);
-      gameState.currentPhase = -1;
-      performDrawPhase(gameState);
-    }
 
     broadcastToGame(gameId, gameState);
     logger.info(`Phase set to ${gameState.currentPhase} in game ${gameId}`);
