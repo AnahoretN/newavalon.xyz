@@ -1935,7 +1935,7 @@ export const useAppAbilities = ({
         // Apply the token/status to the card
         if (cursorStack.type === 'Revealed') {
           // For Revealed, we need to request reveal or add status
-          const effectiveActorId = cursorStack.sourceCard?.ownerId ?? gameState.activePlayerId ?? localPlayerId
+          const effectiveActorId = cursorStack.sourceCard?.ownerId ?? gameState.activePlayerId ?? localPlayerId ?? 1
           if (!card.statuses) {
             card.statuses = []
           }

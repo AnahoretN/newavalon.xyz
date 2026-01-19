@@ -1,7 +1,7 @@
 // ... existing imports
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { DeckType, GameMode as GameModeEnum } from '../types'
-import type { GameState, Player, Board, GridSize, Card, DragItem, DropTarget, PlayerColor, RevealRequest, CardIdentifier, CustomDeckFile, HighlightData, FloatingTextData } from '../types'
+import type { GameState, Player, Board, GridSize, Card, DragItem, DropTarget, PlayerColor, RevealRequest, CardIdentifier, CustomDeckFile, HighlightData, FloatingTextData, DeckSelectionData, HandCardSelectionData } from '../types'
 import { shuffleDeck, PLAYER_COLOR_NAMES, TURN_PHASES, MAX_PLAYERS } from '../constants'
 import { decksData, countersDatabase, rawJsonData, getCardDefinitionByName, getCardDefinition, commandCardIds } from '../content'
 import { createInitialBoard, recalculateBoardStatuses } from '@server/utils/boardUtils'

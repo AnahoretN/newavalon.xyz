@@ -415,7 +415,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
           // Border color: white
           const innerGlowStyle = shouldHighlight && colorRgb ? {
             background: `radial-gradient(circle at center, transparent 20%, rgba(${colorRgb.r}, ${colorRgb.g}, ${colorRgb.b}, 0.5) 100%)`,
-            boxShadow: `inset 0 0 12px rgba(${glowRgb!.r}, ${glowRgb.g}, ${glowRgb.b}, 0.5)`,
+            boxShadow: glowRgb ? `inset 0 0 12px rgba(${glowRgb.r}, ${glowRgb.g}, ${glowRgb.b}, 0.5)` : undefined,
             border: '5px solid',
             borderColor: `rgb(255, 255, 255)`,
           } : {}

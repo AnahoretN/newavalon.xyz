@@ -839,7 +839,7 @@ const CARD_ABILITIES: CardAbilityDefinition[] = [
   {
     baseId: 'reverendOfTheChoir',
     activationType: 'deploy',
-    getAction: (_card, _gameState, ownerId, coords) => ({
+    getAction: (_card, _gameState, _ownerId, coords) => ({
       type: 'ENTER_MODE',
       mode: 'REVEREND_DOUBLE_EXPLOIT',
       sourceCard: _card,

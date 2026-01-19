@@ -216,7 +216,6 @@ const GridCell = memo<{
             return h.type === 'cell' && h.row === row && h.col === col
           }).map((highlight, idx) => {
             const playerColor = playerColorMap.get(highlight.playerId)
-            const colorStyles = playerColor && PLAYER_COLORS[playerColor] ? PLAYER_COLORS[playerColor] : null
             // Border color: blend between white and owner color (50/50 mix)
             const rgb = playerColor && PLAYER_COLOR_RGB[playerColor]
               ? PLAYER_COLOR_RGB[playerColor]

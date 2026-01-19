@@ -76,7 +76,7 @@ export function filterCards(board: Board, predicate: BoardCardFilter): CardLocat
  * Get all cards owned by a specific player
  */
 export function getPlayerCards(board: Board, playerId: number): CardLocation[] {
-  return filterCards(board, (card) => card.ownerPlayerId === playerId)
+  return filterCards(board, (card) => card.ownerId === playerId)
 }
 
 /**
