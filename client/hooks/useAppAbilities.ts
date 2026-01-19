@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 import type { Card, GameState, AbilityAction, CommandContext, DragItem, Player, CounterSelectionData, CursorStackState, FloatingTextData } from '@/types'
 import { getCardAbilityAction, canActivateAbility } from '@server/utils/autoAbilities'
-import { checkActionHasTargets } from '@server/utils/targeting'
+import { checkActionHasTargets, validateTarget } from '@server/utils/targeting'
 import { hasReadyAbilityInCurrentPhase } from '@/utils/autoAbilities'
 import { recalculateBoardStatuses } from '@server/utils/boardUtils'
 import { deepCloneState, TIMING } from '@/utils/common'
@@ -922,8 +922,9 @@ export const useAppAbilities = ({
           player.score += totalScore
         }
         // Exit scoring step and move to next player
+        // Set phase to -1 (Draw Phase) so server will auto-draw and transition to Setup (0)
         newState.isScoringStep = false
-        newState.currentPhase = 0
+        newState.currentPhase = -1
         const finishingPlayerId = playerId
         newState.board.forEach(row => {
           row.forEach(cell => {
@@ -1900,7 +1901,70 @@ export const useAppAbilities = ({
   }, [interactionLock, abilityMode, gameState, localPlayerId, handleLineSelection, moveItem, markAbilityUsed, setAbilityMode, spawnToken, setCommandContext, resurrectDiscardedCard, updatePlayerScore, commandContext, handleActionExecution, triggerFloatingText])
 
   const handleHandCardClick = useCallback((player: Player, card: Card, cardIndex: number) => {
+    console.log('[handleHandCardClick] CALLED - player:', player.name, 'card:', card.name, 'cardIndex:', cardIndex, 'cursorStack:', cursorStack?.type)
     if (interactionLock.current) {
+      console.log('[handleHandCardClick] Blocked by interactionLock')
+      return
+    }
+
+    // NEW: Handle cursorStack for hand cards (e.g., Revealed tokens from Threat Analyst)
+    if (cursorStack && setPlayMode !== null && setPlayMode !== undefined) {
+      console.log('[handleHandCardClick] Processing cursorStack for hand card:', card.name, 'stack:', cursorStack.type)
+
+      // Check if this card is a valid target for the cursorStack
+      const constraints = {
+        targetOwnerId: cursorStack.targetOwnerId,
+        excludeOwnerId: cursorStack.excludeOwnerId,
+        onlyOpponents: cursorStack.onlyOpponents || (cursorStack.targetOwnerId === -1),
+        onlyFaceDown: cursorStack.onlyFaceDown,
+        targetType: cursorStack.targetType,
+        requiredTargetStatus: cursorStack.requiredTargetStatus,
+        tokenType: cursorStack.type,
+      }
+
+      const isValid = validateTarget(
+        { card, ownerId: player.id, location: 'hand' },
+        constraints,
+        gameState.activePlayerId,
+        gameState.players,
+      )
+
+      console.log('[handleHandCardClick] Valid target for cursorStack?', isValid)
+
+      if (isValid) {
+        // Apply the token/status to the card
+        if (cursorStack.type === 'Revealed') {
+          // For Revealed, we need to request reveal or add status
+          const effectiveActorId = cursorStack.sourceCard?.ownerId ?? gameState.activePlayerId ?? localPlayerId
+          if (!card.statuses) {
+            card.statuses = []
+          }
+          // Check if already has Revealed from this player
+          const hasRevealed = card.statuses.some(s => s.type === 'Revealed' && s.addedByPlayerId === effectiveActorId)
+          if (!hasRevealed) {
+            card.statuses.push({ type: 'Revealed', addedByPlayerId: effectiveActorId })
+            // Update state via moveItem to properly sync
+            moveItem({
+              card: { id: 'stack', deck: 'counter', name: '', imageUrl: '', fallbackImage: '', power: 0, ability: '', types: [] },
+              source: 'counter_panel',
+              statusType: 'Revealed',
+              count: 1,
+            }, { target: 'hand', playerId: player.id, cardIndex })
+
+            if (cursorStack.sourceCoords && cursorStack.sourceCoords.row >= 0) {
+              markAbilityUsed(cursorStack.sourceCoords, cursorStack.isDeployAbility)
+            }
+            if (cursorStack.count > 1) {
+              setCursorStack(prev => prev ? ({ ...prev, count: prev.count - 1 }) : null)
+            } else {
+              if (cursorStack.chainedAction) {
+                handleActionExecution(cursorStack.chainedAction, cursorStack.sourceCoords || { row: -1, col: -1 })
+              }
+              setCursorStack(null)
+            }
+          }
+        }
+      }
       return
     }
 
@@ -2005,7 +2069,7 @@ export const useAppAbilities = ({
       return
     }
     activateAbility(card, { row: -1, col: -1 })
-  }, [abilityMode, cursorStack, interactionLock, gameState, activateAbility])
+  }, [abilityMode, cursorStack, interactionLock, gameState, activateAbility, moveItem, markAbilityUsed, setAbilityMode, setCursorStack, handleActionExecution, validateTarget, localPlayerId, setPlayMode])
 
   return {
     activateAbility,

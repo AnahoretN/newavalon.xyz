@@ -25,6 +25,7 @@ import {
   playerDisconnectTimers,
   broadcastGamesList
 } from '../services/gameLifecycle.js';
+import { performDrawPhase } from './phaseManagement.js';
 
 const MAX_PLAYERS = 4;
 
@@ -90,6 +91,10 @@ export function handleUpdateState(ws, data) {
       // Game exists - check if this is a player reconnecting
       let assignedPlayerId = null;
 
+      // Store previous active player ID before update
+      const previousActivePlayerId = existingGameState.activePlayerId;
+      const previousPhase = existingGameState.currentPhase;
+
       if (playerToken) {
         // Try to find the player's slot by token (don't require isDisconnected - F5 reconnect is fast)
         const playerToRestore = existingGameState.players.find(
@@ -117,30 +122,103 @@ export function handleUpdateState(ws, data) {
         }
       }
 
-      // Update game state with client's state
-      // Save players array before Object.assign since we need it for reconnection logic
-      const clientPlayers = updatedGameState.players;
-      const existingPlayers = existingGameState.players;
+      // Store client's phase and active player before Object.assign
+      const clientPhase = updatedGameState.currentPhase;
+      const clientActivePlayerId = updatedGameState.activePlayerId;
 
+      // Update game state with client's state
+      const clientPlayers = updatedGameState.players;
+      const serverPlayersBeforeUpdate = existingGameState.players;
+
+      // Check if active player changed (simple rule: new player = draw card)
+      const playerChanged = clientActivePlayerId !== undefined && clientActivePlayerId !== previousActivePlayerId;
+
+      // Also check if client is requesting Draw Phase (-1)
+      const clientRequestsDrawPhase = clientPhase === -1;
+
+      // Debug logging
+      if (clientActivePlayerId !== undefined && clientActivePlayerId !== previousActivePlayerId) {
+        logger.info(`[UpdateState] Player change detected: previous=${previousActivePlayerId}, client=${clientActivePlayerId}, changed=${playerChanged}`);
+      } else if (clientActivePlayerId === undefined) {
+        logger.info(`[UpdateState] No clientActivePlayerId in update`);
+      } else if (clientActivePlayerId === previousActivePlayerId) {
+        logger.info(`[UpdateState] Player same: ${clientActivePlayerId}, no draw`);
+      }
+      if (clientRequestsDrawPhase) {
+        logger.info(`[UpdateState] Client requesting Draw Phase (-1), phase=${clientPhase}`);
+      }
+
+      // Perform draw FIRST on existing state (before any client data is applied)
+      // This ensures the draw happens on the correct server state
+      let drawnPlayerId: number | null = null;
+      if ((playerChanged || clientRequestsDrawPhase) && clientActivePlayerId !== null) {
+        logger.info(`[UpdateState] 🎯 Triggering draw - playerChanged=${playerChanged}, clientRequestsDrawPhase=${clientRequestsDrawPhase}`);
+        existingGameState.activePlayerId = clientActivePlayerId;
+        existingGameState.currentPhase = 0; // Set to Setup after draw
+        performDrawPhase(existingGameState);
+        drawnPlayerId = clientActivePlayerId;
+      }
+
+      // Save server players AFTER draw (so we have the updated hand/deck)
+      const serverPlayersAfterDraw = existingGameState.players;
+
+      // Now update the game state with client's data (except for hand/deck of drawn player)
       Object.assign(existingGameState, updatedGameState);
 
-      // Handle players array based on whether this is a reconnection
-      if (assignedPlayerId !== null) {
-        // During reconnection, we need to be careful about player data
-        // Copy over critical connection flags from existing state to client state
-        clientPlayers?.forEach((clientPlayer: any) => {
-          const existingPlayer = existingPlayers.find((p: any) => p.id === clientPlayer.id);
-          if (existingPlayer) {
-            // Preserve connection-related flags from server state
-            clientPlayer.isDisconnected = existingPlayer.isDisconnected;
-            clientPlayer.disconnectTimestamp = existingPlayer.disconnectTimestamp;
+      // IMPORTANT: If we just performed a draw, restore phase to 0 (Setup)
+      // Object.assign above may have overwritten it with client's phase (-1)
+      if (drawnPlayerId !== null) {
+        existingGameState.currentPhase = 0;
+        logger.info(`[UpdateState] Restored phase to 0 after draw for player ${drawnPlayerId}`);
+      }
+
+      // Merge players: for the drawn player, preserve server's hand/deck with the drawn card
+      if (clientPlayers) {
+        const mergedPlayers: any[] = [];
+
+        clientPlayers.forEach((clientPlayer: any) => {
+          const serverPlayerAfterDraw = serverPlayersAfterDraw.find((p: any) => p.id === clientPlayer.id);
+          if (serverPlayerAfterDraw) {
+            // For the player who just drew, preserve server's hand/deck (includes the drawn card)
+            // For others, use client's data
+            const preserveServerCards = clientPlayer.id === drawnPlayerId;
+
+            // Special case: if server has more cards in hand than client, preserve server's hand
+            // This handles the case where client sends stale data after draw
+            const serverHasMoreCards = serverPlayerAfterDraw.hand.length > clientPlayer.hand.length;
+            const preserveHandDueToSize = serverHasMoreCards && clientPlayer.id === drawnPlayerId;
+
+            // NEW: Also preserve hand/deck if this is the NEW active player and server has more cards
+            const isNewActivePlayer = clientPlayer.id === clientActivePlayerId && clientPlayer.id !== previousActivePlayerId;
+            const isNewActiveWithMoreCards = isNewActivePlayer && serverHasMoreCards;
+
+            mergedPlayers.push({
+              ...serverPlayerAfterDraw,
+              ...clientPlayer,
+              hand: (preserveServerCards || preserveHandDueToSize || isNewActiveWithMoreCards) ? serverPlayerAfterDraw.hand : clientPlayer.hand,
+              deck: (preserveServerCards || preserveHandDueToSize || isNewActiveWithMoreCards) ? serverPlayerAfterDraw.deck : clientPlayer.deck,
+              discard: clientPlayer.discard || serverPlayerAfterDraw.discard || [],
+            });
+          } else {
+            // New player (e.g., dummy added) - use client's data
+            mergedPlayers.push(clientPlayer);
           }
         });
-        // Use the client's players with preserved connection flags
-        existingGameState.players = clientPlayers || existingPlayers;
+
+        existingGameState.players = mergedPlayers;
       } else {
-        // Normal update - use client's players as-is (includes hand/deck changes from drag-and-drop)
-        existingGameState.players = clientPlayers || existingPlayers;
+        existingGameState.players = serverPlayersAfterDraw;
+      }
+
+      // Restore connection flags if reconnection
+      if (assignedPlayerId !== null) {
+        clientPlayers?.forEach((clientPlayer: any) => {
+          const existingPlayer = existingGameState.players.find((p: any) => p.id === clientPlayer.id);
+          if (existingPlayer) {
+            existingPlayer.isDisconnected = clientPlayer.isDisconnected;
+            existingPlayer.disconnectTimestamp = clientPlayer.disconnectTimestamp;
+          }
+        });
       }
 
       associateClientWithGame(ws, gameIdToUpdate);

@@ -308,12 +308,6 @@ export const useGameState = () => {
   const isManualExitRef = useRef<boolean>(false)
   const isJoinAttemptRef = useRef<boolean>(false) // Track if user is trying to join via Join Game modal
   const playerTokenRef = useRef<string | undefined>(undefined)
-  // Track which players have auto-drawn in the current turn to prevent duplicate draws
-  const autoDrawnPlayersRef = useRef<Set<number>>(new Set())
-  // Track the last active player ID and phase in onmessage to detect changes
-  const lastAutoDrawContextRef = useRef<{ activePlayerId: number | null | undefined; phase: number } | null>(null)
-  // Track if we've processed at least one message (to distinguish initial state from phase changes)
-  const hasProcessedFirstMessageRef = useRef(false)
 
   const gameStateRef = useRef(gameState)
   useEffect(() => {
@@ -397,10 +391,6 @@ export const useGameState = () => {
 
     try {
       ws.current = new WebSocket(WS_URL)
-      // Reset auto-draw tracking when establishing new connection
-      autoDrawnPlayersRef.current.clear()
-      lastAutoDrawContextRef.current = null
-      hasProcessedFirstMessageRef.current = false
     } catch (error) {
       console.error('Failed to create WebSocket:', error)
       setConnectionStatus('Disconnected')
@@ -616,15 +606,9 @@ export const useGameState = () => {
           const syncedData = syncGameStateImages(data)
 
           // IMPORTANT: Prevent phase flicker by validating phase transitions
-          // If we're currently in scoring step and incoming state is not, verify it's a valid transition
+          // Only ignore delayed updates if we're NOT in scoring step OR if this is a forced sync
           const currentState = gameStateRef.current
-          if (currentState.isScoringStep && !syncedData.isScoringStep && syncedData.currentPhase !== 0) {
-            // We're in scoring, incoming is non-scoring but not setup phase - likely old state
-            logger.debug('Ignoring delayed state update (expected setup phase after scoring)')
-            return
-          }
-          // If we're NOT in scoring and incoming IS in scoring, verify current phase is commit (2)
-          if (!currentState.isScoringStep && syncedData.isScoringStep && currentState.currentPhase !== 2) {
+          if (!currentState.isScoringStep && syncedData.isScoringStep && syncedData.currentPhase !== 2) {
             // Incoming scoring state but we're not in commit phase - likely old state
             logger.debug('Ignoring delayed scoring state update')
             return
@@ -632,114 +616,6 @@ export const useGameState = () => {
 
           setGameState(syncedData)
           gameStateRef.current = syncedData
-
-          // Auto-draw logic: only draw when ENTERING Setup phase for a player who hasn't drawn yet this turn
-          // We track both active player and phase to detect "entering Setup" vs "already in Setup"
-          const prevContext = lastAutoDrawContextRef.current
-          const currentContext = { activePlayerId: syncedData.activePlayerId, phase: syncedData.currentPhase }
-          const isFirstMessage = !hasProcessedFirstMessageRef.current
-
-          // Determine if we're ENTERING Setup phase (coming from a different phase)
-          // This prevents auto-draw on page refresh when already in Setup
-          // But allows it after scoring when we transition back to Setup
-          // Special case: First turn of starting player - should auto-draw when game just started in Setup
-          const isStartingPlayerFirstSetup = isFirstMessage &&
-            syncedData.isGameStarted &&
-            currentContext.phase === 0 &&
-            currentContext.activePlayerId !== undefined &&
-            syncedData.startingPlayerId !== null &&
-            currentContext.activePlayerId === syncedData.startingPlayerId &&
-            syncedData.turnNumber === 1
-
-          // Special case: Game just started, active player was null and now has a value (in Setup)
-          const isActivePlayerJustSet = prevContext !== null &&
-            prevContext.activePlayerId === null &&
-            currentContext.activePlayerId !== undefined &&
-            currentContext.phase === 0 &&
-            syncedData.isGameStarted &&
-            syncedData.turnNumber === 1
-
-          logger.debug('[Auto-draw] First setup check:', {
-            isFirstMessage,
-            isGameStarted: syncedData.isGameStarted,
-            phase: currentContext.phase,
-            activePlayerId: currentContext.activePlayerId,
-            startingPlayerId: syncedData.startingPlayerId,
-            turnNumber: syncedData.turnNumber,
-            isStartingPlayerFirstSetup,
-            isActivePlayerJustSet,
-            prevActivePlayerId: prevContext?.activePlayerId
-          })
-
-          const enteringSetupForPlayer = isStartingPlayerFirstSetup ||
-            isActivePlayerJustSet ||
-            (!isFirstMessage &&
-            prevContext !== null &&
-            prevContext.phase !== 0 && // Previous phase was NOT Setup
-            currentContext.phase === 0 && // Current phase IS Setup
-            currentContext.activePlayerId !== undefined) // We have an active player
-
-          // Clear auto-draw tracking when phase changes from Setup OR when active player changes
-          const activePlayerChanged = prevContext !== null && prevContext.activePlayerId !== currentContext.activePlayerId &&
-            prevContext.activePlayerId !== null // Don't clear if setting from null to first player
-          const phaseChangedFromSetup = prevContext !== null && prevContext.phase === 0 && currentContext.phase !== 0
-
-          if (activePlayerChanged || phaseChangedFromSetup) {
-            if (activePlayerChanged) {
-              logger.debug('Active player changed from', prevContext.activePlayerId, 'to', currentContext.activePlayerId, '- clearing auto-draw tracking')
-            }
-            autoDrawnPlayersRef.current.clear()
-          }
-
-          // Update the tracked context for next message
-          lastAutoDrawContextRef.current = currentContext
-          hasProcessedFirstMessageRef.current = true
-
-          // Auto-draw only when ENTERING Setup phase from a different phase
-          // NOT when: starting game in Setup, page refresh in Setup, already in Setup
-          logger.debug('[Auto-draw] Checking conditions:', {
-            enteringSetupForPlayer,
-            activePlayerId: syncedData.activePlayerId
-          })
-
-          if (enteringSetupForPlayer && syncedData.activePlayerId !== undefined) {
-            const activePlayer = syncedData.players.find((p: Player) => p.id === syncedData.activePlayerId)
-            logger.debug('[Auto-draw] Active player found:', {
-              found: !!activePlayer,
-              id: activePlayer?.id,
-              deckLength: activePlayer?.deck.length || 0,
-              hasAutoDrawn: activePlayer ? autoDrawnPlayersRef.current.has(activePlayer.id) : false
-            })
-            if (activePlayer && activePlayer.deck.length > 0 && !autoDrawnPlayersRef.current.has(activePlayer.id)) {
-              let shouldDraw = false
-              if (activePlayer.isDummy) {
-                // Dummy players draw if host (Player 1) has auto-draw enabled
-                const hostPlayer = syncedData.players.find((p: Player) => p.id === 1)
-                shouldDraw = hostPlayer?.autoDrawEnabled === true
-              } else {
-                // Real players draw if they have auto-draw enabled
-                shouldDraw = activePlayer.autoDrawEnabled === true
-              }
-
-              if (shouldDraw) {
-                // Apply auto-draw via updateState (will sync to server)
-                // Mark this player as having drawn BEFORE the update to prevent race conditions
-                autoDrawnPlayersRef.current.add(activePlayer.id)
-                logger.debug('Auto-drawing card for player', activePlayer.id, 'entering Setup phase')
-                updateState((prevState: GameState) => {
-                  const newState = { ...prevState }
-                  const player = newState.players.find(p => p.id === activePlayer.id)
-                  if (player && player.deck.length > 0) {
-                    const drawnCard = player.deck[0]
-                    player.deck.splice(0, 1)
-                    player.hand.push(drawnCard)
-                    logger.debug('Applied auto-draw for player', player.id, 'entering Setup phase, hand size:', player.hand.length)
-                  }
-                  return newState
-                })
-              }
-            }
-          }
 
           // Auto-save game state when receiving updates from server
           if (localPlayerIdRef.current !== null && syncedData.gameId) {
@@ -1763,7 +1639,9 @@ export const useGameState = () => {
         }
         newState.isRoundEndModalOpen = true
       } else {
+        // New turn starting - clear auto-draw tracking and increment turn number
         newState.turnNumber += 1
+        newState.autoDrawnPlayers = []
       }
     }
 
@@ -1796,8 +1674,8 @@ export const useGameState = () => {
     // Recalculate again as Resurrected removal/Stun addition changes auras
     newState.board = recalculateBoardStatuses(newState)
 
-    // Reset to Setup phase
-    newState.currentPhase = 0
+    // Reset to Draw Phase (-1) - server will auto-draw and transition to Setup (0)
+    newState.currentPhase = -1
     newState.isScoringStep = false
 
     return newState
@@ -1813,6 +1691,8 @@ export const useGameState = () => {
 
       // Handle finishing the scoring step - complete the full turn
       if (newState.isScoringStep) {
+        // Just return the result - updateState will send UPDATE_STATE to server
+        // Server will handle the phase transition and draw
         return completeTurn(newState, activePlayerId ?? undefined)
       }
 
@@ -1838,8 +1718,10 @@ export const useGameState = () => {
         return newState
       }
 
-      // After Scoring phase (3), wrap back to Setup (0) - end of full turn
+      // After Scoring phase (3), wrap back - end of full turn
       if (nextPhaseIndex >= TURN_PHASES.length) {
+        // Just return the result - updateState will send UPDATE_STATE to server
+        // Server will handle the phase transition and draw
         return completeTurn(newState, activePlayerId ?? undefined)
       }
 
@@ -1906,6 +1788,7 @@ export const useGameState = () => {
       newState.roundEndTriggered = false
       newState.turnNumber = 1
       newState.gameWinner = null
+      newState.autoDrawnPlayers = [] // Clear auto-draw tracking for new round
       return newState
     })
   }, [updateState])
@@ -2269,8 +2152,10 @@ export const useGameState = () => {
           }
 
           // --- HISTORY TRACKING: Entering Board ---
-          // Manually played cards get tracked in history for fallback 'LastPlayed' status
-          if (item.source !== 'board' && item.isManual && cardToMove.ownerId !== undefined) {
+          // Cards placed on board get tracked in history for 'LastPlayed' status.
+          // This includes: manual plays, deploy abilities, and tokens from counter_panel.
+          // Only cards moved within the board (source === 'board') are NOT tracked as new plays.
+          if (item.source !== 'board' && cardToMove.ownerId !== undefined) {
             const player = newState.players.find(p => p.id === cardToMove.ownerId)
             if (player) {
               // FIX: Added initialization check for boardHistory to prevent crash if undefined.
