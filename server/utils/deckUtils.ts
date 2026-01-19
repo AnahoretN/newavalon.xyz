@@ -4,8 +4,11 @@
  */
 
 import { getDeckFiles, getCardDefinition } from '../services/content.js';
-import { logger } from './logger.js';
 import { PLAYER_COLORS } from '../constants/playerColors.js';
+import { shuffleDeck } from '../../shared/utils/array.js';
+
+// Re-export for backward compatibility
+export { shuffleDeck };
 
 // Command card IDs that get special treatment
 export const COMMAND_CARD_IDS = new Set([
@@ -15,20 +18,13 @@ export const COMMAND_CARD_IDS = new Set([
   'mobilization',
   'inspiration',
   'dataInterception',
-  'falseOrders'
+  'falseOrders',
+  'experimentalStimulants',
+  'logisticsChain',
+  'quickResponseTeam',
+  'temporaryShelter',
+  'enhancedInterrogation',
 ]);
-
-/**
- * Shuffles an array using the Fisher-Yates algorithm
- */
-export function shuffleDeck<T>(deck: T[]): T[] {
-  const shuffled = [...deck];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
-}
 
 /**
  * Generates a unique player token for reconnection
@@ -49,7 +45,7 @@ export function createDeck(deckType: string, playerId: number, playerName: strin
   const deckFile = deckFiles.find(df => df.id === deckType);
 
   if (!deckFile) {
-    logger.error(`Invalid deckType requested: ${deckType}`);
+    console.error(`Invalid deckType requested: ${deckType}`);
     return [];
   }
 
@@ -58,7 +54,7 @@ export function createDeck(deckType: string, playerId: number, playerName: strin
   for (const deckEntry of deckFile.cards) {
     const cardDef = getCardDefinition(deckEntry.cardId);
     if (!cardDef) {
-      logger.warn(`Card definition not found for ID: ${deckEntry.cardId} in deck: ${deckFile.name}`);
+      console.warn(`Card definition not found for ID: ${deckEntry.cardId} in deck: ${deckFile.name}`);
       continue;
     }
 
@@ -105,7 +101,7 @@ export function createNewPlayer(id: number, isDummy = false): any {
   const initialDeck = deckFiles.find(df => df.isSelectable);
 
   if (!initialDeck) {
-    logger.error('No selectable decks found in contentDatabase.json!');
+    console.error('No selectable decks found in contentDatabase.json!');
     throw new Error('Cannot create players without decks');
   }
 
