@@ -35,12 +35,14 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./client/*"],
-      "@server/*": ["./server/*"]
+      "@server/*": ["./server/*"],
+      "@shared/*": ["./shared/*"]
     }
   },
   "include": [
     "client/**/*",
-    "server/types/**/*"
+    "server/types/**/*",
+    "shared/**/*"
   ],
   "exclude": [
     "node_modules",

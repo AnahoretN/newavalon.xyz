@@ -1,4 +1,8 @@
 import type { Card, GameState, AbilityAction } from '../types/types.js'
+import { READY_STATUS_DEPLOY, READY_STATUS_SETUP, READY_STATUS_COMMIT } from '../../shared/constants/readyStatuses.js'
+
+// Ability activation type - when can this ability be used?
+export type AbilityActivationType = 'deploy' | 'setup' | 'commit'
 
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // Parameters with _ prefix are used in nested functions/reducers, disable warning
@@ -18,13 +22,6 @@ import type { Card, GameState, AbilityAction } from '../types/types.js'
 //
 // This system allows abilities to be tried once per phase, and if they fail (no targets),
 // the card can move on to the next ability in sequence.
-
-const READY_STATUS_DEPLOY = 'readyDeploy'
-const READY_STATUS_SETUP = 'readySetup'
-const READY_STATUS_COMMIT = 'readyCommit'
-
-// Ability activation type - when can this ability be used?
-export type AbilityActivationType = 'deploy' | 'setup' | 'commit'
 
 // Helper functions
 const checkAdj = (r1: number, c1: number, r2: number, c2: number): boolean => {

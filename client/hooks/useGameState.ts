@@ -2,7 +2,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { DeckType, GameMode as GameModeEnum } from '../types'
 import type { GameState, Player, Board, GridSize, Card, DragItem, DropTarget, PlayerColor, RevealRequest, CardIdentifier, CustomDeckFile, HighlightData, FloatingTextData, DeckSelectionData, HandCardSelectionData } from '../types'
-import { shuffleDeck, PLAYER_COLOR_NAMES, TURN_PHASES, MAX_PLAYERS } from '../constants'
+import { PLAYER_COLOR_NAMES, TURN_PHASES, MAX_PLAYERS } from '../constants'
+import { shuffleDeck } from '@shared/utils/array'
 import { decksData, countersDatabase, rawJsonData, getCardDefinitionByName, getCardDefinition, commandCardIds } from '../content'
 import { createInitialBoard, recalculateBoardStatuses } from '@server/utils/boardUtils'
 import { logger } from '../utils/logger'
@@ -956,10 +957,9 @@ export const useGameState = () => {
       const currentState = gameStateRef.current
       const refreshedState = deepCloneState(currentState)
       refreshedState.players.forEach((p: Player) => {
-        ['hand', 'deck', 'discard'].forEach(pile => {
-          // @ts-ignore
+        const piles: Array<keyof Pick<Player, 'hand' | 'deck' | 'discard'>> = ['hand', 'deck', 'discard']
+        piles.forEach(pile => {
           if (p[pile]) {
-            // @ts-ignore
             p[pile] = p[pile].map(c => {
               const def = getCardDefinitionByName(c.name)
               return def ? { ...c, ...def } : c

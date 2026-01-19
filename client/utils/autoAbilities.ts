@@ -1,10 +1,9 @@
 import type { Card, GameState } from '@/types'
 import { canActivateAbility as serverCanActivateAbility, getCardAbilityTypes } from '@server/utils/autoAbilities'
+import { READY_STATUS_DEPLOY, READY_STATUS_SETUP, READY_STATUS_COMMIT } from '@shared/constants/readyStatuses'
 
-// Ready status constants
-export const READY_STATUS_DEPLOY = 'readyDeploy'
-export const READY_STATUS_SETUP = 'readySetup'
-export const READY_STATUS_COMMIT = 'readyCommit'
+// Re-export for backward compatibility
+export { READY_STATUS_DEPLOY, READY_STATUS_SETUP, READY_STATUS_COMMIT }
 
 /**
  * Checks if a card has a specific ready status

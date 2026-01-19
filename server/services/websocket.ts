@@ -7,15 +7,12 @@ import { validateMessageSize } from '../utils/security.js';
 import { isRateLimited, cleanupRateLimitData } from './rateLimit.js';
 import {
   getGameState,
-  updateGameState,
   removeClientAssociation,
   getGameIdForClient,
-  logGameAction,
   getClientGameMap,
   getPublicGames,
   getAllGameLogs,
 } from './gameState.js';
-import { generatePlayerToken } from '../utils/deckUtils.js';
 import { handlePlayerLeave, broadcastGamesList } from './gameLifecycle.js';
 
 // Store wss instance for broadcasting

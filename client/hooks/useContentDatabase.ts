@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { fetchContentDatabase, cardDatabase, tokenDatabase, countersDatabase, deckFiles } from '../content'
+import { logger } from '../utils/logger'
 
 interface ContentDatabase {
   cards: Record<string, any>
@@ -107,7 +108,7 @@ export function useContentDatabase() {
         }
       } catch {
         // Server fetch failed - this is expected on GitHub Pages
-        console.log('Server API unavailable, using embedded content database')
+        logger.info('Server API unavailable, using embedded content database')
       }
 
       // Use embedded content database as fallback

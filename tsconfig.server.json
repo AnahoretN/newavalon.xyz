@@ -31,11 +31,13 @@
     "emitDecoratorMetadata": true,
     "baseUrl": ".",
     "paths": {
-      "@content/*": ["./server/content/*"]
+      "@content/*": ["./server/content/*"],
+      "@shared/*": ["./shared/*"]
     }
   },
   "include": [
-    "server/**/*"
+    "server/**/*",
+    "shared/**/*"
   ],
   "exclude": [
     "node_modules",

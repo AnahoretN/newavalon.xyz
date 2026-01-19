@@ -22,7 +22,6 @@ import {
   cancelGameTermination,
   endGame,
   resetInactivityTimer,
-  playerDisconnectTimers,
   broadcastGamesList
 } from '../services/gameLifecycle.js';
 import { performDrawPhase } from './phaseManagement.js';

@@ -5,6 +5,7 @@ import { DECK_THEMES, PLAYER_COLORS, STATUS_ICONS, PLAYER_COLOR_RGB } from '@/co
 import { Tooltip, CardTooltipContent } from './Tooltip'
 import { hasReadyAbilityInCurrentPhase } from '@/utils/autoAbilities'
 import { useLanguage } from '@/contexts/LanguageContext'
+import { logger } from '@/utils/logger'
 
 
 // Split props to prevent unnecessary rerenders when only display props change
@@ -269,7 +270,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   const shouldHighlight = !disableActiveHighlights && !highlightDismissed && hasReadyAbility && !isExecutingAbility
 
   const handleCardClick = useCallback((e: React.MouseEvent) => {
-    console.log('[Card] handleCardClick - card:', card.name, 'boardCoords:', boardCoords, 'shouldHighlight:', shouldHighlight, 'onCardClick:', !!onCardClick)
+    logger.debug('[Card] handleCardClick - card:', card.name, 'boardCoords:', boardCoords, 'shouldHighlight:', shouldHighlight, 'onCardClick:', !!onCardClick)
     // Stop propagation to prevent double-triggering from parent GameBoard cell
     // Only stop if we have a handler or highlight, otherwise let parent handle the click (e.g., DeckViewModal)
     if (onCardClick || shouldHighlight) {
@@ -284,7 +285,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
     if (onCardClick && boardCoords) {
       onCardClick(card, boardCoords)
     }
-  }, [shouldHighlight, localPlayerId, card.ownerId, onCardClick, boardCoords])
+  }, [shouldHighlight, localPlayerId, card, onCardClick, boardCoords])
 
   // Aggregate statuses by TYPE and PLAYER ID to allow separate icons for different players.
   // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are invisible to players

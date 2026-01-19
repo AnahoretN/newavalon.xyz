@@ -9,21 +9,6 @@
 
 import type { Board, GameState } from '../types/types.js'
 
-// Logger singleton (only available on server side)
-let gameLogger: any = null
-try {
-  const loggerModule = await import('../utils/logger.js')
-  gameLogger = loggerModule.logger
-} catch {
-  // Logger not available (client-side)
-}
-
-const logInfo = (message: string) => {
-  if (gameLogger) {
-    gameLogger.info(`[BoardStatus] ${message}`)
-  }
-}
-
 const GRID_MAX_SIZE = 7
 
 // Hero card baseIds for passive abilities (direct ID matching)
@@ -58,36 +43,13 @@ export const createInitialBoard = (): Board =>
  * @returns {Board} A new board object with updated statuses.
  */
 export const recalculateBoardStatuses = (gameState: GameState): Board => {
-  const { board, activeGridSize, players, currentPhase, activePlayerId, currentRound } = gameState
+  const { board, activeGridSize, players } = gameState
   const newBoard = cloneBoard(board)
   const GRID_SIZE = newBoard.length
   const offset = Math.floor((GRID_SIZE - activeGridSize) / 2)
 
-  logInfo(`========== START RECALCULATE BOARD STATUS ==========`)
-  logInfo(`Round: ${currentRound}, Phase: ${currentPhase}, ActivePlayer: ${activePlayerId || 'none'}`)
-
   const playerTeamMap = new Map<number, number | undefined>()
   players.forEach((p: { id: number; teamId?: number }) => playerTeamMap.set(p.id, p.teamId))
-
-  // Collect all cards on board before recalculation for logging
-  const cardsBefore: Array<{r: number, c: number, name: string, owner: number, statuses: string[]}> = []
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      const card = newBoard[r][c].card
-      if (card) {
-        cardsBefore.push({
-          r, c,
-          name: card.name || card.id,
-          owner: card.ownerId || -1,
-          statuses: card.statuses?.map((s: {type: string}) => s.type) || []
-        })
-      }
-    }
-  }
-  logInfo(`Cards on board before recalc: ${cardsBefore.length}`)
-  cardsBefore.forEach(c => {
-    logInfo(`  [${c.r},${c.c}] ${c.name} (Owner: P${c.owner}) Statuses: [${c.statuses.join(', ') || 'none'}]`)
-  })
 
   // 1. Reset dynamic properties
   for (let r = 0; r < GRID_SIZE; r++) {
@@ -309,50 +271,6 @@ export const recalculateBoardStatuses = (gameState: GameState): Board => {
       }
     }
   }
-
-  // Log final statuses after all calculations
-  const cardsAfter: Array<{r: number, c: number, name: string, owner: number, statuses: string[], bonusPower: number}> = []
-  for (let r = 0; r < GRID_SIZE; r++) {
-    for (let c = 0; c < GRID_SIZE; c++) {
-      const card = newBoard[r][c].card
-      if (card) {
-        cardsAfter.push({
-          r, c,
-          name: card.name || card.id,
-          owner: card.ownerId || -1,
-          statuses: card.statuses?.map((s: {type: string}) => s.type) || [],
-          bonusPower: card.bonusPower || 0
-        })
-      }
-    }
-  }
-  logInfo(`Cards on board after recalc: ${cardsAfter.length}`)
-  cardsAfter.forEach(c => {
-    const statusStr = c.statuses.length > 0 ? `[${c.statuses.join(', ')}]` : '[none]'
-    const bonusStr = c.bonusPower > 0 ? ` +${c.bonusPower} bonus` : ''
-    logInfo(`  [${c.r},${c.c}] ${c.name} (P${c.owner})${bonusStr} Statuses: ${statusStr}`)
-  })
-
-  // Log status changes
-  const statusChanges: Array<{card: string, pos: string, added: string[]}> = []
-  cardsAfter.forEach(after => {
-    const before = cardsBefore.find(b => b.r === after.r && b.c === after.c)
-    if (before) {
-      const added = after.statuses.filter(s => !before.statuses.includes(s))
-      if (added.length > 0) {
-        statusChanges.push({ card: after.name, pos: `[${after.r},${after.c}]`, added })
-      }
-    }
-  })
-  if (statusChanges.length > 0) {
-    logInfo(`Status changes: ${statusChanges.length} cards affected`)
-    statusChanges.forEach(change => {
-      logInfo(`  ${change.card} at ${change.pos} +[${change.added.join(', ')}]`)
-    })
-  } else {
-    logInfo(`No status changes in this recalculation`)
-  }
-  logInfo(`========== END RECALCULATE BOARD STATUS ==========`)
 
   return newBoard
 }

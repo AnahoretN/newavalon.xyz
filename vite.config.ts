@@ -54,6 +54,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': path.resolve('./client'),
         '@server': path.resolve('./server'),
+        '@shared': path.resolve('./shared'),
       },
     },
   }

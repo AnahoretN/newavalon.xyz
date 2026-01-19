@@ -186,21 +186,6 @@ export const COUNTERS: Card[] = [
 ]
 
 /**
- * Shuffles an array of cards using the Fisher-Yates (aka Knuth) shuffle algorithm.
- * This function is pure; it returns a new shuffled array without modifying the original.
- * @param deck The array of cards to shuffle.
- * @returns A new array containing the same cards in a random order.
- */
-export const shuffleDeck = (deck: Card[]): Card[] => {
-  const shuffled = [...deck]
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-  return shuffled
-}
-
-/**
  * A mapping of player IDs to their fixed positions on the screen.
  * Top positions are calculated as Header Height (h-14 = 56px) + 3px gap = 59px.
  * Bottom positions are simply 3px from bottom.
