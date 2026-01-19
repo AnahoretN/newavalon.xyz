@@ -181,31 +181,34 @@ export function handleUpdateState(ws, data) {
         }
       }
 
-      // Merge players: for the drawn player, preserve server's hand/deck with the drawn card
-      // IMPORTANT: Also preserve server's boardHistory to prevent stale client state from overwriting
-      // the correct order of played cards (which affects LastPlayed status)
+      // Merge players: ALWAYS preserve server's hand/deck/boardHistory (server is source of truth)
+      // Client can update name, color, settings, but NOT card state
+      // IMPORTANT: This prevents stale client state from overwriting correct server state
       if (clientPlayers) {
         const mergedPlayers: any[] = [];
 
         clientPlayers.forEach((clientPlayer: any) => {
           const serverPlayerAfterDraw = serverPlayersAfterDraw.find((p: any) => p.id === clientPlayer.id);
           if (serverPlayerAfterDraw) {
-            // For the player who just drew, preserve server's hand/deck (includes the drawn card)
-            // For others, use client's data
-            const preserveServerCards = clientPlayer.id === drawnPlayerId;
-
-            // Preserve server's boardHistory if it's longer (has more recent plays)
-            // This prevents stale client state from overwriting correct LastPlayed order
-            const serverHasMoreHistory = serverPlayerAfterDraw.boardHistory &&
-              serverPlayerAfterDraw.boardHistory.length > (clientPlayer.boardHistory?.length || 0);
-
+            // Server is ALWAYS the source of truth for card state (hand, deck, discard, boardHistory)
+            // Client can update other properties like name, color, settings, etc.
             mergedPlayers.push({
               ...serverPlayerAfterDraw,
-              ...clientPlayer,
-              hand: preserveServerCards ? serverPlayerAfterDraw.hand : clientPlayer.hand,
-              deck: preserveServerCards ? serverPlayerAfterDraw.deck : clientPlayer.deck,
-              discard: clientPlayer.discard || serverPlayerAfterDraw.discard || [],
-              boardHistory: serverHasMoreHistory ? serverPlayerAfterDraw.boardHistory : clientPlayer.boardHistory,
+              // Only allow client to update specific non-game-state fields
+              name: clientPlayer.name ?? serverPlayerAfterDraw.name,
+              color: clientPlayer.color ?? serverPlayerAfterDraw.color,
+              isDisconnected: clientPlayer.isDisconnected ?? serverPlayerAfterDraw.isDisconnected,
+              disconnectTimestamp: clientPlayer.disconnectTimestamp ?? serverPlayerAfterDraw.disconnectTimestamp,
+              autoDrawEnabled: clientPlayer.autoDrawEnabled ?? serverPlayerAfterDraw.autoDrawEnabled,
+              // CRITICAL: Never let client overwrite server's card state
+              hand: serverPlayerAfterDraw.hand,
+              deck: serverPlayerAfterDraw.deck,
+              discard: serverPlayerAfterDraw.discard || [],
+              boardHistory: serverPlayerAfterDraw.boardHistory || [],
+              // Preserve any other server-specific fields
+              playerToken: serverPlayerAfterDraw.playerToken,
+              isDummy: serverPlayerAfterDraw.isDummy,
+              isSpectator: serverPlayerAfterDraw.isSpectator,
             });
           } else {
             // New player (e.g., dummy added) - use client's data
