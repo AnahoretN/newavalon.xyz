@@ -15,7 +15,7 @@ import {
   logGameAction
 } from '../services/gameState.js';
 import { broadcastToGame } from '../services/websocket.js';
-import { createNewPlayer, generatePlayerToken } from '../utils/deckUtils.js';
+import { createNewPlayer, generatePlayerToken, createDeck } from '../utils/deckUtils.js';
 import {
   handlePlayerLeave,
   cancelPlayerDisconnectTimer,
@@ -913,7 +913,7 @@ export function handleResetGame(ws: any, data: any) {
         boardHistory: [],
         autoDrawEnabled: p.autoDrawEnabled !== false,
         hand: [],
-        deck: createNewPlayer(p.id, p.isDummy).deck,
+        deck: createDeck(deckType, p.id, p.name),
         discard: [],
         score: 0,
         isReady: false,
