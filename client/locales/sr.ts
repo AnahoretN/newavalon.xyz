@@ -238,6 +238,10 @@ export const sr: TranslationResource = {
     clearCache: 'Obriši keš',
     clearCacheDesc: 'Obriši sve sačuvane podatke i ponovo učitaj stranicu',
     cacheCleared: 'Keš obrisan! Ponovno učitavanje...',
+    saveJson: 'Sačuvaj JSON',
+    saveText: 'Sačuvaj tekst',
+    loadTextDeck: 'Učitaj tekst',
+    cannotSaveEmptyDeck: 'Ne možete sačuvati prazan špil.',
   },
   rules: {
     title: 'Pravila igre "New Avalon: Skirmish"',

@@ -211,6 +211,10 @@ const enUI = {
   clearCache: 'Clear Cache',
   clearCacheDesc: 'Clear all saved data and reload the page',
   cacheCleared: 'Cache cleared! Reloading...',
+  saveJson: 'Save JSON',
+  saveText: 'Save Text',
+  loadTextDeck: 'Load Text',
+  cannotSaveEmptyDeck: 'Cannot save an empty deck.',
 }
 
 const enRules = {

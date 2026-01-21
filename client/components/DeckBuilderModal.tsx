@@ -4,7 +4,7 @@ import type { CustomDeckFile, Player, Card } from '@/types'
 import { getAllCards, getSelectableDecks, getCardDefinition, commandCardIds, getCardDatabaseMap } from '@/content'
 import { Card as CardComponent } from './Card'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { validateDeckData, MAX_DECK_SIZE } from '@/utils/deckValidation'
+import { parseTextDeckFormat, exportToTextDeckFormat, MAX_DECK_SIZE } from '@/utils/textDeckFormat'
 
 interface DeckBuilderModalProps {
   isOpen: boolean;
@@ -50,7 +50,7 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [isTypeDropdownOpen, setIsTypeDropdownOpen] = useState(false)
 
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const textFileInputRef = useRef<HTMLInputElement>(null)
   const typeDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -187,9 +187,9 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
     })
   }
 
-  const handleSaveDeck = () => {
+  const handleSaveAsText = () => {
     if (totalCards === 0) {
-      alert('Cannot save an empty deck.')
+      alert(t('cannotSaveEmptyDeck') || 'Cannot save an empty deck.')
       return
     }
 
@@ -198,19 +198,20 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
       cards: Array.from(currentDeck.entries()).map(([cardId, quantity]) => ({ cardId, quantity })),
     }
 
-    const blob = new Blob([JSON.stringify(deckData, null, 2)], { type: 'application/json' })
+    const textContent = exportToTextDeckFormat(deckData)
+    const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${deckData.deckName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`
+    a.download = `${deckData.deckName.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.txt`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
 
-  const handleLoadDeckClick = () => {
-    fileInputRef.current?.click()
+  const handleLoadTextDeckClick = () => {
+    textFileInputRef.current?.click()
   }
 
   const handleFileSelected = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -223,8 +224,7 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
     reader.onload = (e) => {
       try {
         const text = e.target?.result as string
-        const json = JSON.parse(text)
-        const validation = validateDeckData(json)
+        const validation = parseTextDeckFormat(text)
 
         if (!validation.isValid) {
           alert((validation as { error: string }).error)
@@ -238,7 +238,7 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
         setCurrentDeck(newDeck)
 
       } catch (err) {
-        alert('Failed to parse deck file.')
+        alert(t('failedToParseDeckFile') || 'Failed to parse deck file.')
       } finally {
         if (event.target) {
           event.target.value = ''
@@ -267,10 +267,10 @@ export const DeckBuilderModal: React.FC<DeckBuilderModalProps> = ({ isOpen, onCl
             />
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={handleClearDeck} className="px-4 py-2 bg-red-900 hover:bg-red-800 text-white rounded text-sm font-bold transition-colors">{t('clear')}</button>
-            <button onClick={handleLoadDeckClick} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm font-bold transition-colors">{t('loadDeck')}</button>
-            <input type="file" ref={fileInputRef} onChange={handleFileSelected} accept=".json" className="hidden" />
-            <button onClick={handleSaveDeck} className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded text-sm font-bold transition-colors">{t('save')}</button>
+            <button onClick={handleClearDeck} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm font-bold transition-colors">{t('clear')}</button>
+            <button onClick={handleLoadTextDeckClick} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded text-sm font-bold transition-colors">{t('loadTextDeck')}</button>
+            <input type="file" ref={textFileInputRef} onChange={handleFileSelected} accept=".txt" className="hidden" />
+            <button onClick={handleSaveAsText} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold transition-colors">{t('saveText')}</button>
             <div className="w-px h-8 bg-gray-600 mx-2"></div>
             <button onClick={onClose} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-sm font-bold transition-colors">{t('close')}</button>
           </div>

@@ -91,7 +91,7 @@ Before commit **MANDATORY**:
 │   │   ├── DeckViewModal.tsx     # React.FC({isOpen: boolean, onClose: () => void, title: string, player: Player, cards: Card[], setDraggedItem: (item: DragItem | null) => void, onCardContextMenu: (e: React.MouseEvent, card: Card, source: string) => void, onCardDoubleClick: (card: Card, source: string) => void, onCardClick: (card: Card, source: string) => void, canInteract: boolean, isDeckView?: boolean, playerColorMap: Map<number, PlayerColor>, localPlayerId: number | null, imageRefreshVersion?: number, highlightFilter?: string})
 │   │   ├── TokensModal.tsx       # React.FC({isOpen: boolean, onClose: () => void, setDraggedItem: (item: DragItem | null) => void, openContextMenu: (e: React.MouseEvent, type: string, data: any) => void, canInteract: boolean, anchorEl: HTMLElement | null, imageRefreshVersion?: number, draggedItem: DragItem | null})
 │   │   ├── CountersModal.tsx     # React.FC({isOpen: boolean, onClose: () => void, setDraggedItem: (item: DragItem | null) => void, canInteract: boolean, anchorEl: HTMLElement | null, imageRefreshVersion?: number, onCounterMouseDown: (counter: any) => void, cursorStack: { type: string; count: number } | null})
-│   │   ├── DeckBuilderModal.tsx  # React.FC({isOpen: boolean, onClose: () => void, setViewingCard: (card: Card | null) => void})
+│   │   ├── DeckBuilderModal.tsx  # React.FC({isOpen: boolean, onClose: () => void, setViewingCard: (card: Card | null) => void}) - Now supports text deck format (.txt) export/import with format "Nx Card Name"
 │   │   ├── SettingsModal.tsx     # React.FC({isOpen, onClose, onSave, connectionStatus, onReconnect}) - Server URL config, reconnect button, connection status indicator, Copy Game Link button (only active when connected)
 │   │   ├── RulesModal.tsx        # React.FC({isOpen: boolean, onClose: () => void})
 │   │   ├── CommandModal.tsx      # React.FC({isOpen: boolean, card: Card | null, playerColorMap: Map<number, PlayerColor>, onConfirm: (command: string) => void, onCancel: () => void})
@@ -107,14 +107,16 @@ Before commit **MANDATORY**:
 │   │   ├── useAppCommand.ts      # export const useAppCommand: ({gameState, localPlayerId, draggedItem, setDraggedItem, openContextMenu, playMode, setPlayMode, setCursorStack, playerColorMap}) => {playCard, moveCard, returnCardToHand, announceCard, endTurn, playCounter, playToken, destroyCard, addCommand, cancelPendingCommand, executePendingCommand, handleQuickDrop}
 │   │   ├── useAppAbilities.ts    # export const useAppAbilities: ({gameState, localPlayerId, setCursorStack, playerColorMap}) => {handleDeployAbility}
 │   │   └── useAppCounters.ts     # export const useAppCounters: ({gameState, localPlayerId}) => {handleStackInteraction}
-│   ├── utils/                    # Client-side utilities (5 files)
+│   ├── utils/                    # Client-side utilities (6 files)
 │   │   ├── boardUtils.ts         # export const createInitialBoard: () => Board, export const recalculateBoardStatuses: (gameState: GameState) => Board
 │   │   ├── targeting.ts          # export const validateTarget: (action: AbilityAction, sourceCardId: string, targetCardId: string, sourceCoords: {row: number, col: number}, targetCoords: {row: number, col: number}, gameState: GameState, playerId: number) => boolean, export const calculateValidTargets: (action: AbilityAction, sourceCardId: string, sourceCoords: {row: number, col: number}, gameState: GameState, playerId: number, commandContext?: CommandContext) => {row: number, col: number}[], export const checkActionHasTargets: (action: AbilityAction, currentGameState: GameState, playerId: number | null, commandContext?: CommandContext) => boolean
 │   │   ├── commandLogic.ts       # export const getCommandAction: (cardId: string) => AbilityAction[]
 │   │   ├── autoAbilities.ts      # export const canActivateAbility: (card: Card, phaseIndex: number, activeTurnPlayerId: number | undefined) => boolean, export const getCardAbilityAction: (card: Card, gameState: GameState, trigger: 'deploy' | 'turn_start' | 'turn_end', sourceCoords?: {row: number, col: number}) => AbilityAction[]
-│   │   └── textFormatters.ts     # export const formatAbilityText: (ability: string) => React.ReactNode
+│   │   ├── textFormatters.ts     # export const formatAbilityText: (ability: string) => React.ReactNode
+│   │   ├── textDeckFormat.ts     # Text-based deck format parser/exporter (format: "Nx Card Name"), export const parseTextDeckFormat: (textContent: string) => TextDeckParseResult, export const exportToTextDeckFormat: (deckFile: CustomDeckFile) => string
+│   │   └── deckValidation.ts     # export const validateDeckData: (data: any) => DeckValidationResult
 │   ├── locales/                  # Translation system
-│   │   ├── index.ts              # export const resources: Record<LanguageCode, TranslationResource>, export const LANGUAGE_NAMES: Record<LanguageCode, string>, export const AVAILABLE_LANGUAGES (en, ru, sr), includes new translations: copyGameLink, copyGameLinkDesc, reconnect, inviteLinkDesc, copyInviteLink, copied
+│   │   ├── index.ts              # export const resources: Record<LanguageCode, TranslationResource>, export const LANGUAGE_NAMES: Record<LanguageCode, string>, export const AVAILABLE_LANGUAGES (en, ru, sr), includes new translations: saveJson, saveText, loadTextDeck, cannotSaveEmptyDeck
 │   │   ├── types.ts              # type LanguageCode, interface CardTranslation, interface CounterTranslation, interface TranslationResource
 │   │   └── ru.ts, sr.ts          # Translation files with same structure as en
 │   ├── App.tsx                   # export default function App - includes useEffect for auto-joining games from invite links (checks sessionStorage for invite_game_id)

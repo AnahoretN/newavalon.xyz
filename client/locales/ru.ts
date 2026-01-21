@@ -238,6 +238,10 @@ export const ru: TranslationResource = {
     clearCache: 'Сбросить кеш',
     clearCacheDesc: 'Удалить все сохранённые данные и перезагрузить страницу',
     cacheCleared: 'Кеш очищен! Перезагрузка...',
+    saveJson: 'Сохранить JSON',
+    saveText: 'Сохранить текст',
+    loadTextDeck: 'Загр. текст',
+    cannotSaveEmptyDeck: 'Нельзя сохранить пустую колоду.',
   },
   rules: {
     title: 'Правила Игры "New Avalon: Skirmish"',

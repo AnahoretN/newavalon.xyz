@@ -6,7 +6,7 @@ import { getSelectableDecks } from '@/content'
 import { Card as CardComponent } from './Card'
 import { CardTooltipContent } from './Tooltip'
 import { useLanguage } from '@/contexts/LanguageContext'
-import { validateDeckData } from '@/utils/deckValidation'
+import { parseTextDeckFormat } from '@/utils/textDeckFormat'
 import { calculateGlowColor, rgba } from '@/utils/common'
 
 type ContextMenuData =
@@ -258,18 +258,22 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
     const reader = new FileReader()
     reader.onload = (event) => {
       try {
-        const deckData = JSON.parse(event.target?.result as string)
-        const validation = validateDeckData(deckData)
+        const text = event.target?.result as string
 
+        // Try text deck format
+        const validation = parseTextDeckFormat(text)
         if (!validation.isValid) {
           console.error('Failed to load deck:', validation.error)
+          alert((validation as { error: string }).error)
           return
         }
 
         const { deckFile } = validation
         onLoadCustomDeck(deckFile)
+
       } catch (err) {
         console.error('Failed to parse deck file', err)
+        alert('Failed to parse deck file.')
       }
     }
     reader.readAsText(file)
@@ -443,7 +447,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             </select>
             {player.selectedDeck === DeckTypeEnum.Custom && (
               <div className="flex gap-2">
-                <input type="file" ref={fileInputRef} onChange={handleFileSelected} accept=".json" className="hidden" />
+                <input type="file" ref={fileInputRef} onChange={handleFileSelected} accept=".txt" className="hidden" />
                 <button onClick={handleLoadDeckClick} className="w-full bg-indigo-600 hover:bg-indigo-700 py-1 rounded font-bold">{t('loadDeck')}</button>
               </div>
             )}

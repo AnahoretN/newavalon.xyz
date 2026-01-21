@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.7t] - 2026-01-21
 
+### Added
+- **Text Deck Format**: New deck save/load system using plain text format
+  - Format: "Nx Card Name" (quantity followed by 'x' and card name)
+  - Cards sorted alphabetically
+  - Supports localized card names (English, Russian, Serbian)
+  - Strict security validation with file size limits (max 10KB) and line length limits (max 200 chars)
+  - Input sanitization removing control characters and suspicious patterns
+- **Deck Quantity Rules**: Enforced limits per card type
+  - Hero and Rarity cards: max 1 per deck
+  - Command cards: max 2 per deck
+  - Other cards: max 3 per deck
+  - Any violation prevents file loading with clear error message
+
+### Changed
+- Deck Builder now only supports text format (.txt) for save/load
+  - Removed JSON export option
+  - Simplified UI with Clear, Load Text, and Save Text buttons
+  - Updated button colors: Save Text now matches Close (indigo), Clear matches Load (gray)
+
 ### Fixed
 - **Critical Card Ownership Bug**: Fixed issue where playing a card from hand would remove the same card from other players' hands/decks
   - Server now checks both card ID AND ownerId when removing duplicates from board/announced slots
