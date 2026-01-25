@@ -86,7 +86,8 @@ async function writeLogEntry(gameId: string, entry: Record<string, unknown>): Pr
 
   try {
     const logLine = JSON.stringify(entry) + '\n';
-    await logData.stream.writeFile(logLine, { flag: 'a' });
+    // FileHandle.write() takes a buffer and returns { bytesWritten, buffer }
+    await logData.stream.write(Buffer.from(logLine, 'utf-8'));
   } catch (error) {
     console.error('Failed to write game log entry:', error);
   }
