@@ -2174,6 +2174,7 @@ const App = memo(function App() {
               onCardClick={handleBoardCardClick}
               onEmptyCellClick={handleEmptyCellClick}
               validTargets={validTargets}
+              targetingMode={gameState.targetingMode}
               noTargetOverlay={noTargetOverlay}
               disableActiveHighlights={isTargetingMode}
               preserveDeployAbilities={justAutoTransitioned}
