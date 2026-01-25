@@ -1,13 +1,13 @@
 import React, { memo, useRef, useState, useEffect, useMemo } from 'react'
 import { DeckType as DeckTypeEnum } from '@/types'
 import type { Player, PlayerColor, Card as CardType, DragItem, DropTarget, CustomDeckFile, ContextMenuParams, CursorStackState } from '@/types'
-import { PLAYER_COLORS, GAME_ICONS, PLAYER_COLOR_RGB } from '@/constants'
+import { PLAYER_COLORS, GAME_ICONS } from '@/constants'
 import { getSelectableDecks } from '@/content'
 import { Card as CardComponent } from './Card'
 import { CardTooltipContent } from './Tooltip'
 import { useLanguage } from '@/contexts/LanguageContext'
 import { parseTextDeckFormat } from '@/utils/textDeckFormat'
-import { calculateGlowColor, rgba } from '@/utils/common'
+import { calculateGlowColor, rgba, getPlayerColorRgbOrDefault, TIMING } from '@/utils/common'
 
 type ContextMenuData =
   | { player: Player }
@@ -133,12 +133,15 @@ const DropZone: React.FC<{ onDrop: () => void, className?: string, isOverClassNa
     <div
       onDragOver={(e) => {
         e.preventDefault()
+        e.stopPropagation()
         setIsOver(true)
       }}
-      onDragLeave={() => setIsOver(false)}
+      onDragLeave={(e) => {
+        e.stopPropagation()
+        setIsOver(false)
+      }}
       onDrop={(e) => {
         e.preventDefault()
-        e.stopPropagation()
         setIsOver(false)
         onDrop()
       }}
@@ -322,7 +325,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
         <div className="bg-gray-800 p-1 rounded-lg mb-1 flex-shrink-0">
           <div className="grid grid-cols-4 gap-1 sm:gap-2">
             {/* Deck */}
-            <DropZone className="relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
+            <DropZone className="relative" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })} isOverClassName="rounded-lg ring-2 ring-white">
               {(() => {
                 // Check if deck is selectable (either from local player or from remote player)
                 const isLocalDeckSelectable = isDeckSelectable
@@ -333,9 +336,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                 // For remote targets, use the remote player's color
                 const targetPlayerId = isRemoteDeckSelectable && remoteValidTargets ? remoteValidTargets.playerId : activePlayerId
                 const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
-                const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
-                  ? PLAYER_COLOR_RGB[activePlayerColorName]
-                  : { r: 37, g: 99, b: 235 }
+                const rgb = getPlayerColorRgbOrDefault(activePlayerColorName, { r: 37, g: 99, b: 235 })
                 const deckHighlightStyle = isDeckSelectableActive ? {
                   boxShadow: `0 0 12px 2px ${rgba(calculateGlowColor(rgb), 0.5)}`,
                   border: '3px solid rgb(255, 255, 255)',
@@ -350,9 +351,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                 const selectionColorName = recentSelection?.selectedByPlayerId
                   ? playerColorMap.get(recentSelection.selectedByPlayerId)
                   : null
-                const selectionRgb = selectionColorName && PLAYER_COLOR_RGB[selectionColorName]
-                  ? PLAYER_COLOR_RGB[selectionColorName]
-                  : rgb
+                const selectionRgb = getPlayerColorRgbOrDefault(selectionColorName, rgb)
 
                 return (
                   <div className="relative aspect-square">
@@ -392,7 +391,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             </DropZone>
 
             {/* Discard */}
-            <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="bg-indigo-600 ring-2">
+            <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="rounded-lg ring-2 ring-indigo-400">
               <div className="aspect-square bg-gray-700 rounded flex flex-col items-center justify-center cursor-pointer hover:bg-gray-600 transition-all shadow-md border border-gray-600 select-none text-white">
                 <span className="text-[10px] sm:text-xs font-bold mb-0.5 text-gray-400 uppercase tracking-tight">{t('discard')}</span>
                 <span className="text-base sm:text-lg font-bold">{player.discard.length}</span>
@@ -412,7 +411,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                       playerId: player.id,
                       isManual: true
                     })}
-                    onDragEnd={() => setDraggedItem(null)}
+                    onDragEnd={() => { setTimeout(() => setDraggedItem(null), TIMING.DRAG_END_FALLBACK) }}
                     onContextMenu={(e) => canPerformActions && player.announcedCard && openContextMenu(e, 'announcedCard', {
                       card: player.announcedCard,
                       player
@@ -455,7 +454,12 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
         )}
 
         <div className="flex-grow flex flex-col min-h-0">
-          <DropZone onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'hand', playerId: player.id })} className="flex-grow bg-gray-800 rounded-lg p-2 overflow-y-scroll border border-gray-700 custom-scrollbar">
+          <DropZone onDrop={() => {
+            if (draggedItem) {
+              handleDrop(draggedItem, { target: 'hand', playerId: player.id })
+              setDraggedItem(null)
+            }
+          }} className="flex-grow bg-gray-800 rounded-lg p-2 overflow-y-scroll border border border-gray-700 custom-scrollbar">
             <div className="flex flex-col gap-[2px]">
               {player.hand.map((card, index) => {
                 // Check if this card is a valid target (either from local player or from remote player)
@@ -469,9 +473,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   ? remoteValidTargets.playerId
                   : (highlightOwnerId ?? activePlayerId)
                 const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
-                const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
-                  ? PLAYER_COLOR_RGB[activePlayerColorName]
-                  : { r: 37, g: 99, b: 235 }
+                const rgb = getPlayerColorRgbOrDefault(activePlayerColorName, { r: 37, g: 99, b: 235 })
 
                 // Find recent hand card selection for this card (within last 1 second)
                 const now = Date.now()
@@ -523,7 +525,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                         cardIndex: index,
                         isManual: true
                       })}
-                      onDragEnd={() => setDraggedItem(null)}
+                      onDragEnd={() => { setTimeout(() => setDraggedItem(null), TIMING.DRAG_END_FALLBACK) }}
                       onContextMenu={(e) => canPerformActions && openContextMenu(e, 'handCard', {
                         card,
                         player,
@@ -614,7 +616,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
             <div className="grid grid-cols-6 gap-1 flex-shrink-0 scale-[0.975] origin-left">
             {/* Deck */}
             <div className="aspect-square relative">
-              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })}>
+              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'deck', playerId: player.id, deckPosition: 'top' })} onContextMenu={(e) => openContextMenu(e, 'deckPile', { player })} isOverClassName="rounded-lg ring-2 ring-white">
                 {(() => {
                   // Check if deck is selectable (either from local player or from remote player)
                   const isLocalDeckSelectable = isDeckSelectable
@@ -625,9 +627,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   // For remote targets, use the remote player's color
                   const targetPlayerId = isRemoteDeckSelectable && remoteValidTargets ? remoteValidTargets.playerId : activePlayerId
                   const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
-                  const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
-                    ? PLAYER_COLOR_RGB[activePlayerColorName]
-                    : { r: 37, g: 99, b: 235 }
+                  const rgb = getPlayerColorRgbOrDefault(activePlayerColorName, { r: 37, g: 99, b: 235 })
                   const deckHighlightStyle = isDeckSelectableActive ? {
                     boxShadow: `0 0 12px 2px ${rgba(calculateGlowColor(rgb), 0.5)}`,
                     border: '3px solid rgb(255, 255, 255)',
@@ -642,9 +642,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   const selectionColorName = recentSelection?.selectedByPlayerId
                     ? playerColorMap.get(recentSelection.selectedByPlayerId)
                     : null
-                  const selectionRgb = selectionColorName && PLAYER_COLOR_RGB[selectionColorName]
-                    ? PLAYER_COLOR_RGB[selectionColorName]
-                    : rgb
+                  const selectionRgb = getPlayerColorRgbOrDefault(selectionColorName, rgb)
 
                   return (
                     <div className="relative w-full h-full">
@@ -685,7 +683,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
 
             {/* Discard */}
             <div className="aspect-square relative">
-              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="ring-2 ring-indigo-500">
+              <DropZone className="w-full h-full" onDrop={() => draggedItem && handleDrop(draggedItem, { target: 'discard', playerId: player.id })} onContextMenu={(e) => openContextMenu(e, 'discardPile', { player })} isOverClassName="rounded-lg ring-2 ring-indigo-500">
                 <RemotePile
                   label={t('discard')}
                   count={player.discard.length}
@@ -708,7 +706,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                         playerId: player.id,
                         isManual: true
                       })}
-                      onDragEnd={() => setDraggedItem(null)}
+                      onDragEnd={() => { setTimeout(() => setDraggedItem(null), TIMING.DRAG_END_FALLBACK) }}
                       onContextMenu={(e) => player.announcedCard && openContextMenu(e, 'announcedCard', {
                         card: player.announcedCard,
                         player
@@ -764,9 +762,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                 ? remoteValidTargets.playerId
                 : (highlightOwnerId ?? activePlayerId)
               const activePlayerColorName = targetPlayerId !== null && targetPlayerId !== undefined ? playerColorMap.get(targetPlayerId) : null
-              const rgb = activePlayerColorName && PLAYER_COLOR_RGB[activePlayerColorName]
-                ? PLAYER_COLOR_RGB[activePlayerColorName]
-                : { r: 37, g: 99, b: 235 }
+              const rgb = getPlayerColorRgbOrDefault(activePlayerColorName, { r: 37, g: 99, b: 235 })
 
               // Find recent hand card selection for this card (within last 1 second)
               const now = Date.now()
@@ -798,7 +794,7 @@ const PlayerPanel: React.FC<PlayerPanelProps> = memo(({
                   className="aspect-square relative"
                   draggable={canDrag}
                   onDragStart={() => canDrag && setDraggedItem({ card, source: 'hand', playerId: player.id, cardIndex: index, isManual: true })}
-                  onDragEnd={() => setDraggedItem(null)}
+                  onDragEnd={() => { setTimeout(() => setDraggedItem(null), TIMING.DRAG_END_FALLBACK) }}
                   onContextMenu={(e) => {
                     e.preventDefault()
                     e.stopPropagation()

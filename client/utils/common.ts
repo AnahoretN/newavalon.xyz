@@ -2,6 +2,9 @@
  * Common utility functions shared across the application
  */
 
+import type { PlayerColor } from '../types.js'
+import { PLAYER_COLOR_RGB } from '../constants.js'
+
 /**
  * Deep clone a GameState using structuredClone with fallback
  * Prefer structuredClone for better performance and type preservation
@@ -33,6 +36,18 @@ export const TIMING = {
   GAME_CLEANUP_DELAY: 30000,
   /** Delay before converting disconnected player to dummy (ms) */
   PLAYER_DUMMY_DELAY: 120000,
+  /** Duration for no-target overlay display (ms) */
+  NO_TARGET_DURATION: 2000,
+  /** Duration for highlight display (ms) */
+  HIGHLIGHT_DURATION: 1000,
+  /** Duration for copy success message (ms) */
+  COPY_SUCCESS_DURATION: 1500,
+  /** Duration for link copy success message (ms) */
+  LINK_COPY_SUCCESS_DURATION: 2000,
+  /** Fallback delay for drag end reset (ms) */
+  DRAG_END_FALLBACK: 500,
+  /** Short debounce delay for checks (ms) */
+  DEBOUNCE_SHORT: 100,
 } as const
 
 /**
@@ -84,6 +99,22 @@ export function calculateGlowColor(rgb: RgbColor): RgbColor {
  */
 export function rgba(rgb: RgbColor, alpha: number): string {
   return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${alpha})`
+}
+
+/**
+ * Gets the RGB color for a player color with safe fallback.
+ * Returns null if color is not provided.
+ */
+export function getPlayerColorRgb(color: PlayerColor | undefined | null): RgbColor | null {
+  return color ? PLAYER_COLOR_RGB[color] : null
+}
+
+/**
+ * Gets the RGB color for a player color with a default fallback.
+ * Returns the provided default color if color is not provided.
+ */
+export function getPlayerColorRgbOrDefault(color: PlayerColor | undefined | null, defaultColor: RgbColor): RgbColor {
+  return color ? PLAYER_COLOR_RGB[color] : defaultColor
 }
 
 /**

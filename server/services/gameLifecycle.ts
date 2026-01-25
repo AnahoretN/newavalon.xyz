@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../utils/logger.js';
 import { getGameState, deleteGameState, getPublicGames } from './gameState.js';
+import { closeGameLog, logGameAction as logAction, GameActions } from '../utils/gameLogger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,11 +74,9 @@ export function transferHost(gameId: string, currentHostId: number, gameLogs: Ma
     const oldHostId = gameState.hostId;
     gameState.hostId = nextHost.id;
     logToGame(gameId, `Host transferred from Player ${oldHostId} to Player ${nextHost.id} (${nextHost.name})`, gameLogs);
-    logger.info(`Host transferred in game ${gameId}: Player ${oldHostId} -> Player ${nextHost.id}`);
     return nextHost.id;
   } else {
     logToGame(gameId, `No real players available to take over hosting`, gameLogs);
-    logger.warn(`No available host in game ${gameId}`);
     return null;
   }
 }
@@ -99,7 +98,6 @@ export function removePlayerFromGame(
   if (!player) return;
 
   logToGame(gameId, `Player ${playerId} (${player.name}) removed from game after 5min disconnect timeout.`, gameLogs);
-  logger.info(`Removing Player ${playerId} from game ${gameId} after disconnect timeout.`);
 
   // Check if this player is the host
   const wasHost = gameState.hostId === playerId;
@@ -137,7 +135,6 @@ export function markPlayerDisconnected(
   const player = gameState.players.find((p: any) => p.id === playerId);
   if (player && !player.isDisconnected) {
     logToGame(gameId, `Player ${playerId} (${player.name}) marked as disconnected (10s timeout)`, gameLogs);
-    logger.info(`Marking Player ${playerId} in game ${gameId} as disconnected (10s timeout).`);
 
     player.isDisconnected = true;
     player.isReady = false;
@@ -156,6 +153,22 @@ export async function endGame(
   gameLogs: Map<string, string[]>,
   wss: any
 ) {
+  const gameState = getGameState(gameId);
+
+  // Log game end to file
+  logAction(gameId, GameActions.GAME_ENDED, {
+    reason,
+    playerCount: gameState?.players.filter((p: any) => !p.isDummy).length || 0,
+    finalScores: gameState?.players.map((p: any) => ({
+      id: p.id,
+      name: p.name,
+      score: p.score
+    })) || []
+  }).catch();
+
+  // Close the game log file
+  closeGameLog(gameId).catch();
+
   logToGame(gameId, `Game ending due to: ${reason}.`, gameLogs);
   logger.info(`Ending game ${gameId} due to: ${reason}.`);
 
@@ -167,7 +180,6 @@ export async function endGame(
     const filename = path.join(LOGS_DIR, `game-${gameId}-${timestamp}.log`);
     try {
       await fs.writeFile(filename, logData.join('\n'));
-      logger.info(`Log for game ${gameId} saved to ${filename}`);
     } catch (error) {
       logger.error(`Failed to write log for game ${gameId}:`, error);
     }
@@ -254,7 +266,6 @@ export function convertPlayerToDummy(
   const player = gameState.players.find((p: any) => p.id === playerId);
   if (player && player.isDisconnected) {
     logToGame(gameId, `Player ${playerId} (${player.name}) failed to reconnect and is now a Dummy.`, gameLogs);
-    logger.info(`Converting Player ${playerId} in game ${gameId} to Dummy.`);
 
     player.isDummy = true;
     player.isDisconnected = false; // Dummies are "connected" but not human
@@ -279,7 +290,6 @@ export function scheduleGameTermination(
   if (gameTerminationTimers.has(gameId)) return; // Timer already scheduled
 
   logToGame(gameId, 'Last real player disconnected. Starting 1-minute shutdown timer.', gameLogs);
-  logger.info(`Scheduling termination for game ${gameId} in 1 minute.`);
 
   const timerId = setTimeout(() => {
     const gameState = getGameState(gameId);
@@ -303,7 +313,6 @@ export function cancelGameTermination(gameId: string, gameLogs: Map<string, stri
     clearTimeout(gameTerminationTimers.get(gameId));
     gameTerminationTimers.delete(gameId);
     logToGame(gameId, 'Shutdown timer cancelled due to player activity.', gameLogs);
-    logger.info(`Termination cancelled for game ${gameId}.`);
   }
 }
 
@@ -317,13 +326,11 @@ export function cancelPlayerDisconnectTimer(gameId: string, playerId: number) {
   if (playerDisconnectTimers.has(disconnectTimerKey)) {
     clearTimeout(playerDisconnectTimers.get(disconnectTimerKey));
     playerDisconnectTimers.delete(disconnectTimerKey);
-    logger.info(`Cancelled disconnect timer for Player ${playerId} in game ${gameId}.`);
   }
 
   if (playerDisconnectTimers.has(removeTimerKey)) {
     clearTimeout(playerDisconnectTimers.get(removeTimerKey));
     playerDisconnectTimers.delete(removeTimerKey);
-    logger.info(`Cancelled removal timer for Player ${playerId} in game ${gameId}.`);
   }
 }
 
@@ -371,13 +378,11 @@ export function handlePlayerLeave(
     player.disconnectTimestamp = Date.now();
 
     // After 10 seconds: mark as disconnected
-    logger.info(`Scheduling disconnect mark for Player ${playerId} in game ${gameId} in 10s.`);
     const disconnectTimerId = setTimeout(() => {
       markPlayerDisconnected(gameId, playerId, gameLogs, broadcastState);
     }, DISCONNECT_WARNING_MS);
 
     // After 5 minutes: remove from game
-    logger.info(`Scheduling removal for Player ${playerId} in game ${gameId} in 5min.`);
     const removeTimerId = setTimeout(() => {
       removePlayerFromGame(gameId, playerId, gameLogs, broadcastState, broadcastGamesListFn);
     }, DISCONNECT_REMOVE_MS);

@@ -242,6 +242,7 @@ export const ru: TranslationResource = {
     saveText: 'Сохранить текст',
     loadTextDeck: 'Загр. текст',
     cannotSaveEmptyDeck: 'Нельзя сохранить пустую колоду.',
+    failedToParseDeckFile: 'Не удалось разобрать файл колоды.',
   },
   rules: {
     title: 'Правила Игры "New Avalon: Skirmish"',

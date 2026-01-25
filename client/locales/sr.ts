@@ -242,6 +242,7 @@ export const sr: TranslationResource = {
     saveText: 'Sačuvaj tekst',
     loadTextDeck: 'Učitaj tekst',
     cannotSaveEmptyDeck: 'Ne možete sačuvati prazan špil.',
+    failedToParseDeckFile: 'Nije uspelo raščlanjivanje datoteke špila.',
   },
   rules: {
     title: 'Pravila igre "New Avalon: Skirmish"',

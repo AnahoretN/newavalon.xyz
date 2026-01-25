@@ -41,6 +41,8 @@ import { validateTarget, calculateValidTargets, checkActionHasTargets } from '@s
 import { getCommandAction } from '@server/utils/commandLogic'
 import { useLanguage } from './contexts/LanguageContext'
 import { logger } from './utils/logger'
+import { TIMING } from './utils/common'
+import { shuffleDeck } from '@shared/utils/array'
 
 const COUNTER_BG_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v1763653192/background_counter_socvss.png'
 
@@ -583,8 +585,8 @@ const App = memo(function App() {
       if (topDeckViewState.isLocked && topDeckViewState.sourceCard) {
         if (topDeckViewState.sourceCard.ownerId !== undefined) {
           drawCard(topDeckViewState.sourceCard.ownerId)
-          // Secret Informant: shuffle deck after drawing
-          shufflePlayerDeck(topDeckViewState.sourceCard.ownerId)
+          // Note: Deck shuffling should only happen for specific search abilities (Mr. Pearl, Lucius, Quick Response Team, Michael Falk)
+          // Secret Informant and similar view-top abilities do NOT shuffle
         }
         if (topDeckViewState.sourceCoords) {
           markAbilityUsed(topDeckViewState.sourceCoords, topDeckViewState.isDeployAbility)
@@ -592,7 +594,7 @@ const App = memo(function App() {
       }
     }
     setTopDeckViewState(null)
-  }, [topDeckViewState, drawCard, shufflePlayerDeck, markAbilityUsed])
+  }, [topDeckViewState, drawCard, markAbilityUsed])
 
   const topDeckPlayer = useMemo(() => {
     if (!topDeckViewState) {
@@ -714,7 +716,7 @@ const App = memo(function App() {
   useEffect(() => {
     if (latestNoTarget) {
       setNoTargetOverlay(latestNoTarget.coords)
-      const timer = setTimeout(() => setNoTargetOverlay(null), 2000) // Match the CSS animation duration
+      const timer = setTimeout(() => setNoTargetOverlay(null), TIMING.NO_TARGET_DURATION)
       return () => clearTimeout(timer)
     }
     return undefined
@@ -1051,7 +1053,7 @@ const App = memo(function App() {
   useEffect(() => {
     if (latestHighlight) {
       setHighlight(latestHighlight)
-      const timer = setTimeout(() => setHighlight(null), 1000)
+      const timer = setTimeout(() => setHighlight(null), TIMING.HIGHLIGHT_DURATION)
       return () => clearTimeout(timer)
     }
     return undefined
@@ -1485,6 +1487,24 @@ const App = memo(function App() {
           target: 'hand',
           playerId: viewingDiscardPlayer!.id,
         })
+
+        // Shuffle deck after search for specific abilities that mention "shuffle" in their text
+        // These abilities: Mr. Pearl, Lucius Setup, Quick Response Team, Michael Falk
+        const shouldShuffle = abilityMode?.sourceCard && (
+          abilityMode.sourceCard.name.includes('Mr. Pearl') ||
+          abilityMode.sourceCard.name.includes('Lucius') ||
+          abilityMode.sourceCard.name.includes('Quick Response') ||
+          abilityMode.sourceCard.name.includes('Michael Falk')
+        )
+        if (shouldShuffle) {
+          updateState(currentState => {
+            const player = currentState.players.find(p => p.id === viewingDiscardPlayer!.id)
+            if (player) {
+              player.deck = shuffleDeck(player.deck)
+            }
+            return currentState
+          })
+        }
       } else {
         recoverDiscardedCard(viewingDiscardPlayer!.id, cardIndex)
       }
@@ -2160,7 +2180,6 @@ const App = memo(function App() {
               activeFloatingTexts={activeFloatingTexts}
               abilitySourceCoords={abilityMode?.sourceCoords || null}
               abilityCheckKey={abilityCheckKey}
-              targetingMode={gameState.targetingMode}
             />
           </div>
         </div>

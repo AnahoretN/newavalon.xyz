@@ -25,6 +25,7 @@ import {
   broadcastGamesList
 } from '../services/gameLifecycle.js';
 import { performDrawPhase } from './phaseManagement.js';
+import { openGameLog, logGameAction as logAction, GameActions } from '../utils/gameLogger.js';
 
 const MAX_PLAYERS = 4;
 
@@ -49,8 +50,6 @@ export function handleSubscribe(ws, data) {
 
     // Send the current game state to the client
     broadcastToGame(data.gameId, gameState);
-
-    logger.info(`Client subscribed to game ${data.gameId}`);
   } catch (error) {
     logger.error('Failed to subscribe client to game:', error);
   }
@@ -71,7 +70,6 @@ export function handleUpdateState(ws, data) {
         type: 'ERROR',
         message: 'Invalid game state data'
       }));
-      logger.warn('Invalid game state update received');
       return;
     }
 
@@ -139,30 +137,13 @@ export function handleUpdateState(ws, data) {
       // This happens when client sends UPDATE_STATE with old phase=-1 after server already moved to phase 0
       const isStalePhaseAfterDraw = clientPhase === -1 && previousPhase === 0;
 
-      // Debug logging
-      if (clientActivePlayerId !== undefined && clientActivePlayerId !== previousActivePlayerId) {
-        logger.info(`[UpdateState] Player change: previous=${previousActivePlayerId}, client=${clientActivePlayerId}, phase=${clientPhase}, serverPhase=${previousPhase}`);
-      } else if (clientActivePlayerId === undefined) {
-        logger.info(`[UpdateState] No clientActivePlayerId in update`);
-      } else if (clientPhase === -1) {
-        if (previousPhase !== 0) {
-          logger.info(`[UpdateState] Draw phase requested for player ${clientActivePlayerId} (server phase=${previousPhase})`);
-        } else {
-          logger.info(`[UpdateState] Stale phase -1 from client for player ${clientActivePlayerId} - server already in phase 0, will restore phase 0 without drawing`);
-        }
-      }
-
       // Perform draw FIRST on existing state (before any client data is applied)
       // Universal: phase=-1 with activePlayerId AND server not in phase 0 = draw for that player
       let drawnPlayerId: number | null = null;
       if (clientRequestsDraw) {
-        const playerBeforeDraw = existingGameState.players.find(p => p.id === clientActivePlayerId);
-        logger.info(`[UpdateState] 🎯 Triggering draw for player ${clientActivePlayerId}, BEFORE: hand=${playerBeforeDraw?.hand?.length || 0}, deck=${playerBeforeDraw?.deck?.length || 0}`);
         existingGameState.activePlayerId = clientActivePlayerId;
         performDrawPhase(existingGameState);
         drawnPlayerId = clientActivePlayerId;
-        const playerAfterDraw = existingGameState.players.find(p => p.id === clientActivePlayerId);
-        logger.info(`[UpdateState] 🎯 AFTER performDrawPhase: hand=${playerAfterDraw?.hand?.length || 0}, deck=${playerAfterDraw?.deck?.length || 0}`);
       } else if (clientActivePlayerId !== null && clientActivePlayerId !== undefined) {
         // No draw requested, just set the active player
         existingGameState.activePlayerId = clientActivePlayerId;
@@ -214,7 +195,6 @@ export function handleUpdateState(ws, data) {
         existingGameState.roundEndTriggered = roundEndStateToPreserve.roundEndTriggered;
         existingGameState.gameWinner = roundEndStateToPreserve.gameWinner;
         existingGameState.roundWinners = roundEndStateToPreserve.roundWinners;
-        logger.info(`[UpdateState] Preserving round end state - modalOpen: ${roundEndStateToPreserve.isRoundEndModalOpen}, winner: ${roundEndStateToPreserve.gameWinner}`);
       }
 
       // IMPORTANT: Restore phase to 0 if we just performed a draw OR if server phase was 0 but client sent -1
@@ -222,11 +202,6 @@ export function handleUpdateState(ws, data) {
       // Object.assign above may have overwritten the server's phase with client's stale phase (-1)
       if (drawnPlayerId !== null || (previousPhase === 0 && existingGameState.currentPhase === -1)) {
         existingGameState.currentPhase = 0;
-        if (drawnPlayerId !== null) {
-          logger.info(`[UpdateState] Restored phase to 0 after draw for player ${drawnPlayerId}`);
-        } else {
-          logger.info(`[UpdateState] Restored phase to 0 - server was in phase 0 but client sent stale phase -1`);
-        }
       }
 
       // Merge players: smart merge of card state based on who sent the update
@@ -267,18 +242,6 @@ export function handleUpdateState(ws, data) {
             // We must preserve server's card state for ALL players except possibly the NEW active player.
             const isTurnTransition = clientPhase === -1 && clientActivePlayerId !== null && previousActivePlayerId !== clientActivePlayerId;
             const isNewActivePlayer = clientPlayer.id === clientActivePlayerId && isTurnTransition;
-
-            // Log merge decision for debugging
-            if (trustClientCards && !justDrewForThisPlayer && !isStaleStateForActivePlayer) {
-              // Check if we're about to potentially overwrite server state with stale client data
-              const serverHandCount = serverPlayerAfterDraw.hand?.length || 0;
-              const clientHandCount = clientPlayer.hand?.length || 0;
-              const serverDeckCount = serverPlayerAfterDraw.deck?.length || 0;
-              const clientDeckCount = clientPlayer.deck?.length || 0;
-              if (serverHandCount !== clientHandCount || serverDeckCount !== clientDeckCount) {
-                logger.info(`[Merge] Player ${clientPlayer.id}: server hand=${serverHandCount} deck=${serverDeckCount}, client hand=${clientHandCount} deck=${clientDeckCount}, trust=true, isTurnTransition=${isTurnTransition}, isNewActivePlayer=${isNewActivePlayer}, isDummy=${isDummyPlayer}`);
-              }
-            }
 
             // Only trust client's card state if:
             // 1. Client is authoritative (sending player, active player, or dummy player)
@@ -390,8 +353,6 @@ export function handleUpdateState(ws, data) {
             if (card && card.id && !seenIds.has(card.id)) {
               seenIds.add(card.id);
               uniqueDiscard.push(card);
-            } else if (card && card.id && seenIds.has(card.id)) {
-              logger.info(`[BoardHandSync] Removing duplicate card ${card.id} from player ${player.id}'s discard`);
             }
           }
           player.discard = uniqueDiscard;
@@ -399,7 +360,6 @@ export function handleUpdateState(ws, data) {
 
         const removeCardsFromList = (list: any[], isDiscardPile = false) => {
           if (!list) return;
-          const initialLength = list.length;
           // Filter out cards that are on the board or in announced slot
           for (let i = list.length - 1; i >= 0; i--) {
             const card = list[i];
@@ -427,9 +387,6 @@ export function handleUpdateState(ws, data) {
               list.splice(i, 1);
             }
           }
-          if (list.length !== initialLength) {
-            logger.info(`[BoardHandSync] Removed ${initialLength - list.length} card(s) from player ${player.id}'s list that were on board or announced`);
-          }
         };
 
         removeCardsFromList(player.hand);
@@ -448,11 +405,7 @@ export function handleUpdateState(ws, data) {
                             player.deck?.some((c: any) => c?.id === announcedId) ||
                             player.discard?.some((c: any) => c?.id === announcedId);
 
-          if (isOnBoard) {
-            logger.info(`[BoardHandSync] Clearing announcedCard for player ${player.id} - card is on board`);
-            player.announcedCard = null;
-          } else if (isInStorage) {
-            logger.info(`[BoardHandSync] Clearing announcedCard for player ${player.id} - card is in storage (hand/deck/discard), preventing duplicate`);
+          if (isOnBoard || isInStorage) {
             player.announcedCard = null;
           }
         }
@@ -473,28 +426,7 @@ export function handleUpdateState(ws, data) {
       ws.gameId = gameIdToUpdate;
       ws.playerId = assignedPlayerId ?? 1; // Default to host if not assigned
 
-      // Log board and hand state changes for the active player
-      const activePlayer = existingGameState.players.find((p: any) => p.id === existingGameState.activePlayerId);
-      if (activePlayer) {
-        // Count cards on board owned by this player
-        let cardsOnBoard = 0;
-        const boardCards: string[] = [];
-        existingGameState.board?.forEach((row: any[]) => {
-          row.forEach((cell: any) => {
-            if (cell.card?.ownerId === activePlayer.id) {
-              cardsOnBoard++;
-              boardCards.push(`${cell.card.name || cell.card.id}[${cell.card.power}${cell.card.bonusPower ? '+'+cell.card.bonusPower : ''}]`);
-            }
-          });
-        });
-        logger.info(`[BoardState] Player ${activePlayer.id} (${activePlayer.name}): ${cardsOnBoard} cards on board, ${activePlayer.hand?.length || 0} in hand, ${activePlayer.deck?.length || 0} in deck`);
-        if (boardCards.length > 0) {
-          logger.info(`[BoardState] Board cards: [${boardCards.join(', ')}]`);
-        }
-      }
-
       broadcastToGame(gameIdToUpdate, existingGameState);
-      logger.info(`State updated for game ${gameIdToUpdate}, playerId=${ws.playerId}`);
     } else {
       // Game doesn't exist, create it
       // Add playerToken to all players that don't have one (coming from client)
@@ -502,14 +434,30 @@ export function handleUpdateState(ws, data) {
         updatedGameState.players.forEach((p: any) => {
           if (!p.playerToken) {
             p.playerToken = generatePlayerToken();
-            logger.info(`Generated playerToken for Player ${p.id} in new game ${gameIdToUpdate}`);
           }
         });
       }
       const newGameState = createGameState(gameIdToUpdate, updatedGameState);
-      // Store player1's token for the host
+
+      // Open game log file for new game
+      openGameLog(gameIdToUpdate, {
+        gameMode: newGameState.gameMode,
+        isPrivate: newGameState.isPrivate,
+        activeGridSize: newGameState.activeGridSize,
+        playerCount: newGameState.players.length
+      }).catch();
+
       const player1 = newGameState.players.find((p: any) => p.id === 1);
       const player1Token = player1?.playerToken;
+
+      // Log game creation
+      logAction(gameIdToUpdate, GameActions.GAME_CREATED, {
+        hostPlayerId: 1,
+        hostPlayerName: player1?.name || 'Player 1',
+        gameMode: newGameState.gameMode,
+        grid_size: newGameState.activeGridSize
+      }).catch();
+
       associateClientWithGame(ws, gameIdToUpdate);
       ws.gameId = gameIdToUpdate;
       ws.playerId = 1; // Host is always player 1 for new games
@@ -520,7 +468,6 @@ export function handleUpdateState(ws, data) {
         playerToken: player1Token
       }));
       broadcastToGame(gameIdToUpdate, newGameState);
-      logger.info(`New game created: ${gameIdToUpdate}, host assigned playerId=1`);
     }
   } catch (error) {
     logger.error('Failed to update game state:', error);
@@ -534,12 +481,9 @@ export function handleUpdateState(ws, data) {
 export function handleJoinGame(ws, data) {
   try {
     const { gameId, playerToken } = data;
-    logger.info(`JOIN_GAME request: gameId=${gameId}, hasToken=${!!playerToken}, token=${playerToken?.substring(0, 12)}...`);
-
     const gameState = getGameState(gameId);
 
     if (!gameState) {
-      logger.warn(`Game ${gameId} not found, sending ERROR to client`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: `Game with code ${gameId} not found.`
@@ -555,15 +499,10 @@ export function handleJoinGame(ws, data) {
     // Players with a valid playerToken can always reconnect, even if game started
     // This handles F5 refresh, temporary network issues, and tab reopening
     if (playerToken) {
-      // Log all player tokens for debugging
-      const playerInfo = gameState.players.map((p: any) => `Player${p.id}(token=${p.playerToken?.substring(0, 8)}..., dummy=${p.isDummy}, disconnected=${p.isDisconnected})`).join(', ');
-      logger.info(`Current players in game: ${playerInfo}`);
-
       const playerToReconnect = gameState.players.find(
         p => p.playerToken === playerToken
       );
       if (playerToReconnect) {
-        logger.info(`Reconnection: Player ${playerToReconnect.id} found with matching token, restoring...`);
         // Always allow reconnection with valid token
         playerToReconnect.isDisconnected = false;
         playerToReconnect.isDummy = false; // Restore as real player
@@ -576,22 +515,25 @@ export function handleJoinGame(ws, data) {
         // Cancel pending disconnect/removal timers
         cancelPlayerDisconnectTimer(gameId, playerToReconnect.id);
 
+        // Log player reconnection
+        logAction(gameId, GameActions.PLAYER_RECONNECTED, {
+          playerId: playerToReconnect.id,
+          playerName: playerToReconnect.name,
+          playerToken: playerToReconnect.playerToken
+        }).catch();
+
         ws.send(JSON.stringify({
           type: 'JOIN_SUCCESS',
           playerId: playerToReconnect.id,
           playerToken: playerToReconnect.playerToken
         }));
-        logger.info(`Player ${playerToReconnect.id} (${playerToReconnect.name}) reconnected to game ${gameId}`);
         broadcastToGame(gameId, gameState);
         return;
-      } else {
-        logger.info(`Reconnection: No player found with token ${playerToken.substring(0, 8)}... in game ${gameId}`);
       }
     }
 
     // Check if game has already started (only for NEW joins without valid token)
     if (gameState.isGameStarted) {
-      logger.warn(`Game ${gameId} has already started, sending ERROR to client`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'This game has already started.'
@@ -613,13 +555,19 @@ export function handleJoinGame(ws, data) {
       // Cancel pending disconnect/removal timers
       cancelPlayerDisconnectTimer(gameId, playerToTakeOver.id);
 
+      // Log player takeover
+      logAction(gameId, GameActions.PLAYER_JOINED, {
+        playerId: playerToTakeOver.id,
+        playerName: playerToTakeOver.name,
+        takeover: true
+      }).catch();
+
       ws.playerId = playerToTakeOver.id;
       ws.send(JSON.stringify({
         type: 'JOIN_SUCCESS',
         playerId: playerToTakeOver.id,
         playerToken: playerToTakeOver.playerToken
       }));
-      logger.info(`New player took over slot ${playerToTakeOver.id} in game ${gameId}`);
       broadcastToGame(gameId, gameState);
       return;
     }
@@ -648,13 +596,19 @@ export function handleJoinGame(ws, data) {
     gameState.players.push(newPlayer);
     gameState.players.sort((a, b) => a.id - b.id);
 
+    // Log new player join
+    logAction(gameId, GameActions.PLAYER_JOINED, {
+      playerId: newPlayerId,
+      playerName: newPlayer.name,
+      takeover: false
+    }).catch();
+
     ws.playerId = newPlayerId;
     ws.send(JSON.stringify({
       type: 'JOIN_SUCCESS',
       playerId: newPlayerId,
       playerToken: newPlayer.playerToken
     }));
-    logger.info(`Player ${newPlayerId} (${newPlayer.name}) joined game ${gameId}`);
     broadcastToGame(gameId, gameState);
   } catch (error) {
     logger.error('Failed to join game:', error);
@@ -736,7 +690,6 @@ export function handleForceSync(ws, data) {
     // Only the host can force a sync
     const gameState = getGameState(gameIdToSync);
     if (!gameState || ws.playerId !== gameState.hostId) {
-      logger.warn(`Non-host player ${ws.playerId} attempted to force sync game ${gameIdToSync}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Unauthorized: Only host can force sync'
@@ -750,8 +703,6 @@ export function handleForceSync(ws, data) {
     // Update game state
     updateGameState(gameIdToSync, hostGameState);
     logGameAction(gameIdToSync, `Host (Player ${ws.playerId}) forced a game state synchronization.`);
-
-    logger.info(`Host forcing sync for game ${gameIdToSync}`);
 
     // Broadcast to ALL clients, including the host to confirm
     broadcastToGame(gameIdToSync, hostGameState);
@@ -768,12 +719,9 @@ export function handleForceSync(ws, data) {
 export function handleJoinAsInvite(ws: any, data: any) {
   try {
     const { gameId, playerName = 'Player' } = data;
-    logger.info(`JOIN_AS_INVITE request: gameId=${gameId}, playerName=${playerName}`);
-
     const gameState = getGameState(gameId);
 
     if (!gameState) {
-      logger.warn(`Game ${gameId} not found, sending ERROR to client`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: `Game with code ${gameId} not found.`
@@ -790,8 +738,6 @@ export function handleJoinAsInvite(ws: any, data: any) {
     const allPlayers = gameState.players.filter(p => !p.isDummy && !p.isSpectator);
     const playerCount = allPlayers.length;
 
-    logger.info(`Game ${gameId} has ${playerCount} total players (max: ${MAX_PLAYERS})`);
-
     // If game has less than 4 total players, create a new player slot
     if (playerCount < MAX_PLAYERS) {
       // Find the next available player ID (skip all existing IDs, including disconnected players)
@@ -801,11 +747,16 @@ export function handleJoinAsInvite(ws: any, data: any) {
         newPlayerId++;
       }
 
-      logger.info(`Invite: Creating new player with ID ${newPlayerId} (existing IDs: [${Array.from(existingIds).join(', ')}])`);
-
       // Create new player with full deck
       const newPlayer = createNewPlayer(newPlayerId);
       newPlayer.name = playerName;
+
+      // Log new player join via invite
+      logAction(gameId, GameActions.PLAYER_JOINED, {
+        playerId: newPlayerId,
+        playerName: newPlayer.name,
+        viaInvite: true
+      }).catch();
 
       // Add new player using updateGameState for proper persistence
       const updatedPlayers = [...gameState.players, newPlayer];
@@ -822,7 +773,6 @@ export function handleJoinAsInvite(ws: any, data: any) {
         playerToken: newPlayer.playerToken,
         isSpectator: false
       }));
-      logger.info(`Invite: New player ${newPlayerId} (${newPlayer.name}) joined game ${gameId}`);
       broadcastToGame(gameId, updatedState);
     } else {
       // Game is full (4 players), join as spectator
@@ -848,7 +798,6 @@ export function handleJoinAsInvite(ws: any, data: any) {
         isSpectator: true,
         message: `Game is full. You joined as a spectator.`
       }));
-      logger.info(`Invite: ${playerName} joined game ${gameId} as spectator (${updatedState.spectators?.length || 0} spectators)`);
       broadcastToGame(gameId, updatedState);
     }
   } catch (error) {
@@ -884,7 +833,6 @@ export function handleSpectatorLeave(ws: any, data: any) {
     // Remove spectator from the list
     if (gameState.spectators) {
       gameState.spectators = gameState.spectators.filter((s: any) => s.id !== spectatorId);
-      logger.info(`Spectator ${spectatorId} left game ${gameId} (${gameState.spectators.length} spectators remaining)`);
       broadcastToGame(gameId, gameState);
     }
 
@@ -910,8 +858,6 @@ export function handleResetGame(ws: any, data: any) {
       }));
       return;
     }
-
-    logger.info(`[ResetGame] Resetting game ${gameId} to lobby state`);
 
     // Store current player data with their deck selections
     const playersToKeep = gameState.players.map((p: any) => {
@@ -977,8 +923,6 @@ export function handleResetGame(ws: any, data: any) {
     gameState.activeGridSize = preservedSettings.activeGridSize;
     gameState.dummyPlayerCount = preservedSettings.dummyPlayerCount;
     gameState.autoAbilitiesEnabled = preservedSettings.autoAbilitiesEnabled;
-
-    logger.info(`[ResetGame] Game ${gameId} reset to lobby. Players preserved: ${playersToKeep.length}`);
 
     broadcastToGame(gameId, gameState);
   } catch (error) {

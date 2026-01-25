@@ -155,8 +155,6 @@ function handleWebSocketMessage(ws, message) {
       return;
     }
 
-    logger.debug(`Received message type: ${data.type}`);
-
     // Route message to appropriate handler
     routeMessage(ws, data);
 
@@ -316,13 +314,10 @@ export function sendToClient(client, message) {
   if (client && client.readyState === 1) {
     try {
       const payload = JSON.stringify(message);
-      logger.debug(`sendToClient: Sending message type ${message.type}, size: ${payload.length} bytes`);
       client.send(payload);
     } catch (error) {
       logger.error('Error sending to client:', error);
     }
-  } else {
-    logger.warn(`sendToClient: Cannot send - client state is ${client?.readyState}, expected 1 (OPEN)`);
   }
 }
 
@@ -346,11 +341,8 @@ function sanitizeGameState(gameState) {
 
 // Get games list handler
 function handleGetGamesList(ws) {
-  logger.info('GET_GAMES_LIST: Fetching public games');
   const publicGames = getPublicGames();
-  logger.info(`GET_GAMES_LIST: Sending ${publicGames.length} games to client`);
   sendToClient(ws, { type: 'GAMES_LIST', games: publicGames });
-  logger.info('GET_GAMES_LIST: Response sent successfully');
 }
 
 // Sync game handler
@@ -366,27 +358,27 @@ function handleSyncGame(ws) {
 
 // Card action handlers - primarily client-side, logged here for tracking
 // These actions are handled via UPDATE_STATE by the client
-function handleClientSideAction(actionType: string) {
-  logger.debug(`${actionType} - handled via UPDATE_STATE`);
+function handleClientSideAction() {
+  // No-op - actions are handled via UPDATE_STATE by the client
 }
 
 // Handler wrappers for client-side actions
-const handleCreateGame = () => handleClientSideAction('CREATE_GAME');
-const handlePlayCard = () => handleClientSideAction('PLAY_CARD');
-const handleMoveCard = () => handleClientSideAction('MOVE_CARD');
-const handleEndTurn = () => handleClientSideAction('END_TURN');
-const handleDrawCard = () => handleClientSideAction('DRAW_CARD');
-const handleShuffleDeck = () => handleClientSideAction('SHUFFLE_DECK');
-const handleAnnounceCard = () => handleClientSideAction('ANNOUNCE_CARD');
-const handlePlayCounter = () => handleClientSideAction('PLAY_COUNTER');
-const handlePlayToken = () => handleClientSideAction('PLAY_TOKEN');
-const handleDestroyCard = () => handleClientSideAction('DESTROY_CARD');
-const handleReturnCardToHand = () => handleClientSideAction('RETURN_CARD_TO_HAND');
-const handleAddCommand = () => handleClientSideAction('ADD_COMMAND');
-const handleCancelPendingCommand = () => handleClientSideAction('CANCEL_PENDING_COMMAND');
-const handleExecutePendingCommand = () => handleClientSideAction('EXECUTE_PENDING_COMMAND');
+const handleCreateGame = () => handleClientSideAction();
+const handlePlayCard = () => handleClientSideAction();
+const handleMoveCard = () => handleClientSideAction();
+const handleEndTurn = () => handleClientSideAction();
+const handleDrawCard = () => handleClientSideAction();
+const handleShuffleDeck = () => handleClientSideAction();
+const handleAnnounceCard = () => handleClientSideAction();
+const handlePlayCounter = () => handleClientSideAction();
+const handlePlayToken = () => handleClientSideAction();
+const handleDestroyCard = () => handleClientSideAction();
+const handleReturnCardToHand = () => handleClientSideAction();
+const handleAddCommand = () => handleClientSideAction();
+const handleCancelPendingCommand = () => handleClientSideAction();
+const handleExecutePendingCommand = () => handleClientSideAction();
 
 // Note: CHAT_MESSAGE is not yet implemented
 const handleChatMessage = () => {
-  logger.info('CHAT_MESSAGE not yet implemented');
+  // No-op
 };

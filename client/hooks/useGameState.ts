@@ -1209,7 +1209,8 @@ export const useGameState = () => {
       const player = newState.players.find(p => p.id === playerId)
       if (player?.hand[cardIndex]) {
         const card = player.hand[cardIndex]
-        if (['Support', 'Threat', 'Revealed', 'Shield'].includes(status)) {
+        // Check for duplicate statuses that should only exist once per player
+        if (['Support', 'Threat', 'Revealed', 'Shield', 'Resurrected'].includes(status)) {
           const alreadyHasStatusFromPlayer = card.statuses?.some(s => s.type === status && s.addedByPlayerId === addedByPlayerId)
           if (alreadyHasStatusFromPlayer) {
             return currentState
@@ -1894,7 +1895,9 @@ export const useGameState = () => {
 
       if (item.source === 'counter_panel' && item.statusType) {
         const counterDef = countersDatabase[item.statusType]
-        const allowedTargets = counterDef?.allowedTargets || ['board', 'hand']
+        // Use nullish coalescing (??) instead of logical OR (||) to respect empty arrays
+        // Empty array means "no valid targets" (e.g., Resurrected token)
+        const allowedTargets = counterDef?.allowedTargets ?? ['board', 'hand']
         if (!allowedTargets.includes(target.target)) {
           return currentState
         }
@@ -2134,8 +2137,10 @@ export const useGameState = () => {
       }
 
       if (target.target === 'hand' && target.playerId !== undefined) {
-        if (cardToMove.deck === DeckType.Tokens || cardToMove.deck === 'counter') {
-          return newState
+        // Don't allow moving actual tokens/counters to hand (they stay on board or return to their source)
+        // But DO allow moving cards that happen to have 'Tokens' as their origin deck
+        if ((cardToMove.deck === DeckType.Tokens || cardToMove.deck === 'counter') && cardToMove.types?.includes('Token')) {
+          return currentState
         }
         // Remove ready statuses when card leaves the battlefield
         removeAllReadyStatuses(cardToMove)
@@ -2161,10 +2166,9 @@ export const useGameState = () => {
           // Insert card at the calculated position
           player.hand.splice(insertIndex, 0, cardToMove)
 
-          // Automatic Shuffle if moving from Deck to Hand
-          if (item.source === 'deck') {
-            player.deck = shuffleDeck(player.deck)
-          }
+          // NOTE: Removed automatic shuffle when moving from deck to hand
+          // Shuffle should only happen for specific search abilities (Mr. Pearl, Lucius Setup, Quick Response Team, Michael Falk)
+          // Those abilities handle their own shuffle in their ability action chains
         }
       } else if (target.target === 'board' && target.boardCoords) {
         if (newState.board[target.boardCoords.row][target.boardCoords.col].card === null) {
@@ -2199,6 +2203,10 @@ export const useGameState = () => {
         if (cardToMove.deck === DeckType.Tokens || cardToMove.deck === 'counter') {} else {
           // Remove ready statuses when card leaves the battlefield
           removeAllReadyStatuses(cardToMove)
+          // Remove Revealed status when card goes to discard
+          if (cardToMove.statuses) {
+            cardToMove.statuses = cardToMove.statuses.filter(s => s.type !== 'Revealed')
+          }
           const player = newState.players.find(p => p.id === target.playerId)
           if (player) {
             if (cardToMove.ownerId === undefined) {
@@ -2218,6 +2226,10 @@ export const useGameState = () => {
         }
         // Remove ready statuses when card leaves the battlefield
         removeAllReadyStatuses(cardToMove)
+        // Remove Revealed status when card goes to deck
+        if (cardToMove.statuses) {
+          cardToMove.statuses = cardToMove.statuses.filter(s => s.type !== 'Revealed')
+        }
         const player = newState.players.find(p => p.id === target.playerId)
         if (player) {
           if (cardToMove.ownerId === undefined) {
@@ -2565,6 +2577,7 @@ export const useGameState = () => {
       boardTargets,
       handTargets: handTargets.length > 0 ? handTargets : undefined,
       isDeckSelectable: isDeckSelectable || undefined,
+      originalOwnerId: action.originalOwnerId,
     }
 
     // Update local state immediately

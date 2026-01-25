@@ -87,7 +87,6 @@ export function handleUpdateDeckData(ws: WebSocket & { playerId?: number }, data
         type: 'ERROR',
         message: 'Unauthorized: Only host can update deck data'
       }));
-      logger.warn(`Non-host player ${ws.playerId} attempted to update deck data`);
       return;
     }
 
@@ -109,7 +108,6 @@ export function handleUpdateDeckData(ws: WebSocket & { playerId?: number }, data
         type: 'ERROR',
         message: 'Deck data too large'
       }));
-      logger.warn(`Deck data too large: ${deckDataSize} bytes`);
       return;
     }
 
@@ -163,8 +161,6 @@ export function handleUpdateDeckData(ws: WebSocket & { playerId?: number }, data
           return sanitizedDeck;
         })
       : [];
-
-    logger.info(`Deck data updated by host: ${Object.keys(sanitizedCardDatabase).length} cards, ${sanitizedDeckFiles.length} decks`);
 
     // Sanitize token database
     const sanitizedTokenDatabase: Record<string, any> = {};

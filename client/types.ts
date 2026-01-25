@@ -409,6 +409,7 @@ export interface TargetingModeData {
     boardTargets?: {row: number, col: number}[]; // Valid board targets (pre-calculated)
     handTargets?: { playerId: number, cardIndex: number }[]; // Valid hand targets (pre-calculated)
     isDeckSelectable?: boolean; // Whether deck is a valid target
+    originalOwnerId?: number; // The owner of the card that initiated this action (for correct highlight color)
 }
 
 /**

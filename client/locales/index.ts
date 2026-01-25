@@ -215,6 +215,7 @@ const enUI = {
   saveText: 'Save Text',
   loadTextDeck: 'Load Text',
   cannotSaveEmptyDeck: 'Cannot save an empty deck.',
+  failedToParseDeckFile: 'Failed to parse deck file.',
 }
 
 const enRules = {

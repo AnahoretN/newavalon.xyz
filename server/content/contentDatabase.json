@@ -567,8 +567,8 @@
         "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1768321040/Resurrected_tscgk9.png",
         "description": "This unit recently returned from the discard pile. It will become Stunned at the start of the next phase.",
         "sortOrder": 8,
-        "allowedPanels": [],
-        "allowedTargets": []
+        "allowedPanels": ["COUNTER_PANEL"],
+        "allowedTargets": ["board", "hand"]
     },
     "Power+": {
         "name": "Power+",

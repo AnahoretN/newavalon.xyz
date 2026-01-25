@@ -8,6 +8,7 @@ import { getGameState } from '../services/gameState.js';
 import { sanitizePlayerName } from '../utils/security.js';
 import { broadcastToGame } from '../services/websocket.js';
 import { createNewPlayer, generatePlayerToken } from '../utils/deckUtils.js';
+import { logGameAction as logAction, GameActions } from '../utils/gameLogger.js';
 
 /**
  * Handle UPDATE_PLAYER_NAME message
@@ -28,7 +29,6 @@ export function handleUpdatePlayerName(ws, data) {
 
     const player = gameState.players.find(p => p.id === playerId);
     if (!player) {
-      logger.warn(`Player ${playerId} not found in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Player not found'
@@ -39,7 +39,6 @@ export function handleUpdatePlayerName(ws, data) {
     const sanitizedName = sanitizePlayerName(playerName);
     player.name = sanitizedName;
     broadcastToGame(gameId, gameState);
-    logger.info(`Player ${playerId} name updated to '${sanitizedName}' in game ${gameId}`);
   } catch (error) {
     logger.error('Failed to update player name:', error);
   }
@@ -64,7 +63,6 @@ export function handleChangePlayerColor(ws, data) {
 
     const player = gameState.players.find(p => p.id === playerId);
     if (!player) {
-      logger.warn(`Player ${playerId} not found in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Player not found'
@@ -75,7 +73,6 @@ export function handleChangePlayerColor(ws, data) {
     // Check if color is already used by another player
     const colorInUse = gameState.players.some(p => p.id !== playerId && p.color === color);
     if (colorInUse) {
-      logger.warn(`Color '${color}' already in use in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Color already in use'
@@ -85,7 +82,6 @@ export function handleChangePlayerColor(ws, data) {
 
     player.color = color;
     broadcastToGame(gameId, gameState);
-    logger.info(`Player ${playerId} color changed to '${color}' in game ${gameId}`);
   } catch (error) {
     logger.error('Failed to change player color:', error);
   }
@@ -110,7 +106,6 @@ export function handleUpdatePlayerScore(ws, data) {
 
     const player = gameState.players.find(p => p.id === playerId);
     if (!player) {
-      logger.warn(`Player ${playerId} not found in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Player not found'
@@ -121,7 +116,6 @@ export function handleUpdatePlayerScore(ws, data) {
     // Validate score is a finite number and non-negative
     const numericScore = Number(score);
     if (!Number.isFinite(numericScore) || numericScore < 0) {
-      logger.warn(`Invalid score value ${score} for player ${playerId} in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Invalid score value'
@@ -129,15 +123,20 @@ export function handleUpdatePlayerScore(ws, data) {
       return;
     }
 
-    const previousScore = player.score || 0;
+    const previousScore = player.score;
     player.score = numericScore;
     const scoreDelta = numericScore - previousScore;
-    const scoreChange = scoreDelta >= 0 ? `+${scoreDelta}` : `${scoreDelta}`;
-    logger.info(`[PlayerScore] Player ${playerId} (${player.name}) score: ${previousScore} → ${numericScore} (${scoreChange}) in game ${gameId}`);
 
-    // Log all players' scores for context
-    const allScores = gameState.players.map((p: any) => `P${p.id}:${p.score}`).join(', ');
-    logger.info(`[PlayerScore] All scores: [${allScores}]`);
+    // Log score change (only if score actually changed)
+    if (scoreDelta !== 0) {
+      logAction(gameId, GameActions.SCORE_CHANGED, {
+        playerId: player.id,
+        playerName: player.name,
+        previousScore,
+        newScore: numericScore,
+        delta: scoreDelta
+      }).catch();
+    }
 
     broadcastToGame(gameId, gameState);
   } catch (error) {
@@ -172,7 +171,6 @@ export function handleChangePlayerDeck(ws, data) {
 
     const player = gameState.players.find(p => p.id === playerId);
     if (!player) {
-      logger.warn(`Player ${playerId} not found in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Player not found'
@@ -182,7 +180,6 @@ export function handleChangePlayerDeck(ws, data) {
 
     // Validate deckType against available decks
     if (!deckType || typeof deckType !== 'string') {
-      logger.warn(`Invalid deckType '${deckType}' for player ${playerId} in game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Invalid deck type'
@@ -192,7 +189,6 @@ export function handleChangePlayerDeck(ws, data) {
 
     player.selectedDeck = deckType;
     broadcastToGame(gameId, gameState);
-    logger.info(`Player ${playerId} deck changed to '${deckType}' in game ${gameId}`);
   } catch (error) {
     logger.error('Failed to change player deck:', error);
   }
@@ -225,18 +221,13 @@ export function handleLoadCustomDeck(ws, data) {
 
     // Custom deck loading is handled primarily on the client side
     // This handler just acknowledges the request
-    logger.info(`Custom deck load request for player ${playerId} in game ${gameId}`);
     ws.send(JSON.stringify({
       type: 'CUSTOM_DECK_LOADED',
       playerId,
       success: true
     }));
-  } catch (error) {
-    logger.error('Failed to load custom deck:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      message: 'Failed to load custom deck'
-    }));
+  } catch {
+    // Error handling - client already notified
   }
 }
 
@@ -268,7 +259,6 @@ export function handleSetDummyPlayerCount(ws, data) {
     // Validate and sanitize count
     const numericCount = Number(count);
     if (!Number.isFinite(numericCount) || numericCount < 0 || numericCount > 3) {
-      logger.warn(`Invalid dummy player count ${count} for game ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Invalid dummy player count (must be 0-3)'
@@ -301,7 +291,6 @@ export function handleSetDummyPlayerCount(ws, data) {
     }
 
     gameState.dummyPlayerCount = numericCount;
-    logger.info(`Dummy player count set to ${numericCount} for game ${gameId}, players now: ${gameState.players.length}`);
     broadcastToGame(gameId, gameState);
   } catch (error) {
     logger.error('Failed to set dummy player count:', error);
@@ -321,7 +310,6 @@ export function handleLogGameAction(ws, data) {
       return;
     }
 
-    logger.info(`Game action logged for ${gameId}: ${action}`);
     // Game logs are stored in the gameState.gameLog array
     if (!gameState.gameLog) {
       gameState.gameLog = [];

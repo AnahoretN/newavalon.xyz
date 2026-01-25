@@ -42,21 +42,15 @@ function broadcastVisualEffect(
 
   // Send to all connected clients associated with this game (including sender)
   if (wssInstance && wssInstance.clients) {
-    let sentCount = 0
-    const allClients = wssInstance.clients.size
     wssInstance.clients.forEach((client: ExtendedWebSocket) => {
       if (client.readyState === 1 && clientGameMap.get(client) === gameId) {
         try {
           client.send(message);
-          sentCount++
         } catch (err: any) {
           logger.error(`Error sending ${messageType} to client:`, err);
         }
       }
     });
-    logger.info(`[Broadcast] ${messageType}: ${sentCount}/${allClients} clients in game ${gameId}`)
-  } else {
-    logger.warn(`Cannot broadcast ${messageType}: wssInstance=${!!wssInstance}, clients=${!!wssInstance?.clients}`)
   }
 }
 
@@ -117,8 +111,6 @@ export function handleTriggerHighlight(ws: ExtendedWebSocket, data: any) {
 
     // Broadcast the highlight event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'HIGHLIGHT_TRIGGERED', { highlightData });
-
-    logger.debug(`Highlight triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger highlight:', err);
   }
@@ -181,8 +173,6 @@ export function handleTriggerNoTarget(ws: ExtendedWebSocket, data: any) {
 
     // Broadcast the no-target event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'NO_TARGET_TRIGGERED', { coords, timestamp });
-
-    logger.debug(`No target overlay triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger no target overlay:', err);
   }
@@ -245,8 +235,6 @@ export function handleTriggerFloatingText(ws: ExtendedWebSocket, data: any) {
 
     // Broadcast the floating text event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'FLOATING_TEXT_TRIGGERED', { floatingTextData });
-
-    logger.debug(`Floating text triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger floating text:', err);
   }
@@ -309,8 +297,6 @@ export function handleTriggerFloatingTextBatch(ws: ExtendedWebSocket, data: any)
 
     // Broadcast the floating text batch event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'FLOATING_TEXT_BATCH_TRIGGERED', { batch });
-
-    logger.debug(`Floating text batch triggered in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to trigger floating text batch:', err);
   }
@@ -371,7 +357,6 @@ export function handleTriggerDeckSelection(ws: ExtendedWebSocket, data: any) {
       return;
     }
 
-    logger.info(`[DECK_SELECTION] Broadcasting to game ${sanitizedGameId}, data: ${JSON.stringify(deckSelectionData)}`);
     // Broadcast the deck selection event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'DECK_SELECTION_TRIGGERED', { deckSelectionData });
   } catch (err: any) {
@@ -503,8 +488,6 @@ export function handleSetTargetingMode(ws: ExtendedWebSocket, data: any) {
 
     // Broadcast the updated state to all clients
     broadcastVisualEffect(ws, sanitizedGameId, 'TARGETING_MODE_SET', { targetingMode });
-
-    logger.info(`[TargetingMode] Player ${targetingMode.playerId} set targeting mode in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to set targeting mode:', err);
   }
@@ -562,8 +545,6 @@ export function handleClearTargetingMode(ws: ExtendedWebSocket, data: any) {
 
     // Broadcast the cleared state to all clients
     broadcastVisualEffect(ws, sanitizedGameId, 'TARGETING_MODE_CLEARED', {});
-
-    logger.debug(`[TargetingMode] Cleared targeting mode in game ${sanitizedGameId}`);
   } catch (err: any) {
     logger.error('Failed to clear targeting mode:', err);
   }

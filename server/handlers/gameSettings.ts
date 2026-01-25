@@ -34,7 +34,6 @@ export function handleSetGameMode(ws, data) {
 
     gameState.gameMode = mode;
     broadcastToGame(gameId, gameState);
-    logger.info(`Game mode set to ${mode} for game ${gameId}`);
   } catch (error) {
     logger.error('Failed to set game mode:', error);
   }
@@ -67,7 +66,6 @@ export function handleSetGamePrivacy(ws, data) {
 
     gameState.isPrivate = isPrivate;
     broadcastToGame(gameId, gameState);
-    logger.info(`Game privacy set to ${isPrivate} for game ${gameId}`);
   } catch (error) {
     logger.error('Failed to set game privacy:', error);
   }
@@ -120,7 +118,6 @@ export function handleAssignTeams(ws, data) {
     }
 
     broadcastToGame(gameId, gameState);
-    logger.info(`Teams assigned for game ${gameId}`);
   } catch (error) {
     logger.error('Failed to assign teams:', error);
   }
@@ -153,7 +150,6 @@ export function handleSetGridSize(ws, data) {
 
     gameState.activeGridSize = gridSize;
     broadcastToGame(gameId, gameState);
-    logger.info(`Grid size set to ${gridSize.rows}x${gridSize.cols} for game ${gameId}`);
   } catch (error) {
     logger.error('Failed to set grid size:', error);
   }

@@ -21,6 +21,16 @@ export type TextDeckParseResult =
   | { isValid: false; error: string }
 
 /**
+ * Card quantity limits by type
+ */
+const QUANTITY_LIMITS = {
+  HERO: 1,
+  RARITY: 1,
+  COMMAND: 2,
+  DEFAULT: 3,
+} as const
+
+/**
  * Strict regex for validating deck line format
  * Only allows: digits + 'x' + spaces + unicode letters/numbers/symbols
  * No control characters, no executable code patterns
@@ -257,10 +267,6 @@ export function parseTextDeckFormat(textContent: string): TextDeckParseResult {
   }
 
   // Validate quantity limits based on card types
-  // Rules:
-  // - Hero and Rarity cards: max 1 per deck
-  // - Command cards: max 2 per deck
-  // - Other cards: max 3 per deck
   for (const [cardId, quantity] of cardEntries.entries()) {
     const cardDef = getCardDefinition(cardId)
     if (!cardDef) {continue}
@@ -269,14 +275,15 @@ export function parseTextDeckFormat(textContent: string): TextDeckParseResult {
     const isRarity = cardDef.types?.includes('Rarity')
     const isCommand = cardDef.types?.includes('Command')
 
-    let maxQty = 3
+    // Determine limit and type name
+    let maxQty: 1 | 2 | 3 = QUANTITY_LIMITS.DEFAULT
     let cardType = ''
     if (isHero || isRarity) {
-      maxQty = 1
+      maxQty = QUANTITY_LIMITS.HERO
       cardType = isHero ? 'Hero' : 'Rarity'
     }
     else if (isCommand) {
-      maxQty = 2
+      maxQty = QUANTITY_LIMITS.COMMAND
       cardType = 'Command'
     }
 

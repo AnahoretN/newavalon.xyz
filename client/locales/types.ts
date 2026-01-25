@@ -251,6 +251,11 @@ export interface TranslationResource {
     clearCache: string;
     clearCacheDesc: string;
     cacheCleared: string;
+    saveJson: string;
+    saveText: string;
+    loadTextDeck: string;
+    cannotSaveEmptyDeck: string;
+    failedToParseDeckFile: string;
   };
   rules: {
     title: string;

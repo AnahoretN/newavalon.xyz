@@ -30,6 +30,7 @@ interface CardInteractionProps {
   boardCoords?: { row: number, col: number } | null; // This card's position on board
   abilityCheckKey?: number; // Incremented to recheck ability readiness after ability completion
   onCardClick?: (card: CardType, boardCoords: { row: number, col: number }) => void; // Called when card is clicked
+  targetingMode?: boolean; // Whether targeting mode is active (hides ready statuses)
 }
 
 // Extracted outside CardCore to preserve React.memo optimization
@@ -116,6 +117,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   boardCoords = null,
   abilityCheckKey,
   onCardClick,
+  targetingMode = false,
 }) => {
   const { getCardTranslation } = useLanguage()
   const [tooltipVisible, setTooltipVisible] = useState(false)
@@ -267,7 +269,8 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   // 1. Has a ready ability usable in current phase and by active player
   // 2. NOT currently executing an ability
   // 3. Not dismissed and not disabled
-  const shouldHighlight = !disableActiveHighlights && !highlightDismissed && hasReadyAbility && !isExecutingAbility
+  // 4. NOT in targeting mode (ready abilities hidden during targeting)
+  const shouldHighlight = !disableActiveHighlights && !highlightDismissed && hasReadyAbility && !isExecutingAbility && !targetingMode
 
   const handleCardClick = useCallback((e: React.MouseEvent) => {
     logger.debug('[Card] handleCardClick - card:', card.name, 'boardCoords:', boardCoords, 'shouldHighlight:', shouldHighlight, 'onCardClick:', !!onCardClick)
@@ -288,7 +291,7 @@ const CardCore: React.FC<CardCoreProps & CardInteractionProps> = memo(({
   }, [shouldHighlight, localPlayerId, card, onCardClick, boardCoords])
 
   // Aggregate statuses by TYPE and PLAYER ID to allow separate icons for different players.
-  // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are invisible to players
+  // Filter out readiness statuses (readyDeploy, readySetup, readyCommit) - they are always invisible to players
   // DEV NOTE: ready* statuses are internal-only and intentionally hidden from the UI.
   // They control ability availability and are managed by the auto-abilities system.
   const statusGroups = useMemo(() => {
@@ -580,6 +583,10 @@ const arePropsEqual = (prevProps: CardCoreProps & CardInteractionProps, nextProp
   }
   // Check abilityCheckKey for rechecking ability readiness
   if (prevProps.abilityCheckKey !== nextProps.abilityCheckKey) {
+    return false
+  }
+  // Check targetingMode - affects ready status visibility and highlighting
+  if (prevProps.targetingMode !== nextProps.targetingMode) {
     return false
   }
 

@@ -3,7 +3,7 @@ import type { Board, GridSize, DragItem, DropTarget, Card as CardType, PlayerCol
 import { Card } from './Card'
 import { PLAYER_COLORS, FLOATING_TEXT_COLORS, PLAYER_COLOR_RGB } from '@/constants'
 import { hasReadyAbilityInCurrentPhase } from '@/utils/autoAbilities'
-import { calculateGlowColor, rgba } from '@/utils/common'
+import { calculateGlowColor, rgba, TIMING } from '@/utils/common'
 
 interface GameBoardProps {
   board: Board;
@@ -60,6 +60,7 @@ const GridCell = memo<{
   isValidTarget?: boolean;
   isTargetingModeValidTarget?: boolean;
   targetingModePlayerId?: number;
+  targetingModeOriginalOwnerId?: number; // The command card owner (for correct highlight color)
   showNoTarget?: boolean;
   disableActiveHighlights?: boolean;
   preserveDeployAbilities?: boolean;
@@ -71,6 +72,7 @@ const GridCell = memo<{
       onCardDoubleClick, onEmptyCellDoubleClick, imageRefreshVersion, cursorStack,
       currentPhase, activePlayerId, onCardClick, onEmptyCellClick,
       isValidTarget, isTargetingModeValidTarget, targetingModePlayerId,
+      targetingModeOriginalOwnerId,
       showNoTarget, disableActiveHighlights, preserveDeployAbilities,
       abilitySourceCoords, abilityCheckKey,
     }) => {
@@ -135,6 +137,7 @@ const GridCell = memo<{
             source: 'board',
             boardCoords: { row, col },
             isManual: true,
+            bypassOwnershipCheck: true,
           })
         }
       }, [cell.card, setDraggedItem, row, col, cursorStack])
@@ -213,15 +216,17 @@ const GridCell = memo<{
           )}
 
           {/* Targeting mode highlight - shows valid targets from another player's targeting mode */}
-          {isTargetingModeValidTarget && targetingModePlayerId && (() => {
-            const targetingPlayerColor = playerColorMap.get(targetingModePlayerId)
+          {isTargetingModeValidTarget && (targetingModePlayerId || targetingModeOriginalOwnerId) && (() => {
+            // Prefer originalOwnerId (command card owner) for highlight color, fallback to playerId
+            const highlightOwnerId = targetingModeOriginalOwnerId ?? targetingModePlayerId
+            const targetingPlayerColor = highlightOwnerId !== undefined ? playerColorMap.get(highlightOwnerId) : undefined
             const rgb = targetingPlayerColor && PLAYER_COLOR_RGB[targetingPlayerColor]
               ? PLAYER_COLOR_RGB[targetingPlayerColor]
               : { r: 37, g: 99, b: 235 }
             const glowRgb = calculateGlowColor(rgb)
             return (
               <div
-                key={`targeting-mode-${targetingModePlayerId}`}
+                key={`targeting-mode-${highlightOwnerId}`}
                 className="absolute inset-0 rounded-md pointer-events-none animate-glow-pulse"
                 style={{
                   zIndex: 50,
@@ -239,7 +244,11 @@ const GridCell = memo<{
               key={cell.card.id}
               draggable={isGameStarted && !cursorStack}
               onDragStart={handleCardDragStart}
-              onDragEnd={() => setDraggedItem(null)}
+              onDragEnd={() => {
+                // Don't reset here - let the drop handler do it
+                // Fallback: clear after delay if no drop happened
+                setTimeout(() => setDraggedItem(null), TIMING.DRAG_END_FALLBACK)
+              }}
               onContextMenu={handleCardContextMenu}
               onDoubleClick={handleCardDoubleClick}
               className={`w-full h-full ${isGameStarted && !cursorStack ? 'cursor-grab' : 'cursor-default'} relative ${hasActiveEffect ? 'z-40' : 'z-30'}`}
@@ -259,6 +268,7 @@ const GridCell = memo<{
                 boardCoords={{ row: row, col: col }}
                 abilityCheckKey={abilityCheckKey}
                 onCardClick={onCardClick}
+                targetingMode={!!targetingModePlayerId}
               />
             </div>
           )}
@@ -451,6 +461,7 @@ export const GameBoard = memo<GameBoardProps>(({
                 isValidTarget={isValidTarget}
                 isTargetingModeValidTarget={isTargetingModeValidTarget}
                 targetingModePlayerId={targetingMode?.playerId}
+                targetingModeOriginalOwnerId={targetingMode?.originalOwnerId}
                 showNoTarget={isNoTarget}
                 disableActiveHighlights={disableActiveHighlights}
                 preserveDeployAbilities={preserveDeployAbilities}
