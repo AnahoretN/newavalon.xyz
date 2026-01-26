@@ -1592,12 +1592,12 @@ export const useGameState = (props: UseGameStateProps = {}) => {
   }, [])
 
   const setPhase = useCallback((phaseIndex: number) => {
-    // Always clear line selection modes when changing phase
-    if (abilityMode && setAbilityMode) {
-      const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
-      if (lineSelectionModes.includes(abilityMode.mode)) {
-        setAbilityMode(null);
-      }
+    // Check if we need to clear line selection mode
+    const isClearingLineSelectionMode = abilityMode && setAbilityMode && abilityMode.mode &&
+      ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'].includes(abilityMode.mode);
+
+    if (isClearingLineSelectionMode) {
+      setAbilityMode(null);
     }
 
     updateState(currentState => {
@@ -1606,14 +1606,16 @@ export const useGameState = (props: UseGameStateProps = {}) => {
       }
 
       const newPhase = Math.max(0, Math.min(phaseIndex, TURN_PHASES.length - 1))
-      const fromCommitToScoring = currentState.currentPhase === 2 && newPhase === 3
+      const enteringScoringPhase = newPhase === 3
 
-      // When entering Scoring from Commit (for any active player), enable scoring step
+      // When entering Scoring phase from any phase, enable scoring step
       // This matches the behavior of nextPhase
+      // If clearing line selection mode, also close isScoringStep to prevent re-triggering
       return {
         ...currentState,
         currentPhase: newPhase,
-        ...(fromCommitToScoring ? { isScoringStep: true } : {}),
+        ...(enteringScoringPhase && !isClearingLineSelectionMode ? { isScoringStep: true } : {}),
+        ...(isClearingLineSelectionMode ? { isScoringStep: false } : {}),
       }
     })
   }, [updateState, abilityMode, setAbilityMode])
@@ -1706,7 +1708,7 @@ export const useGameState = (props: UseGameStateProps = {}) => {
 
   const nextPhase = useCallback(() => {
     // Always clear line selection modes when changing phase
-    if (abilityMode && setAbilityMode) {
+    if (abilityMode && setAbilityMode && abilityMode.mode) {
       const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
       if (lineSelectionModes.includes(abilityMode.mode)) {
         setAbilityMode(null);
@@ -1799,7 +1801,7 @@ export const useGameState = (props: UseGameStateProps = {}) => {
         return currentState
       }
       // Always clear line selection modes when changing phase
-      if (abilityMode && setAbilityMode) {
+      if (abilityMode && setAbilityMode && abilityMode.mode) {
         const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
         if (lineSelectionModes.includes(abilityMode.mode)) {
           setAbilityMode(null);
