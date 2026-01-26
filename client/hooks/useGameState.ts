@@ -1592,7 +1592,7 @@ export const useGameState = (props: UseGameStateProps = {}) => {
   }, [])
 
   const setPhase = useCallback((phaseIndex: number) => {
-    // Clear ability mode if it's a line selection mode and phase is changing
+    // Always clear line selection modes when changing phase
     if (abilityMode && setAbilityMode) {
       const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
       if (lineSelectionModes.includes(abilityMode.mode)) {
@@ -1604,9 +1604,15 @@ export const useGameState = (props: UseGameStateProps = {}) => {
       if (!currentState.isGameStarted) {
         return currentState
       }
+
+      const newPhase = Math.max(0, Math.min(phaseIndex, TURN_PHASES.length - 1))
+      const fromCommitToScoring = currentState.currentPhase === 2 && newPhase === 3 && currentState.activePlayerId === localPlayerIdRef.current
+
+      // When entering Scoring from Commit (for local player), enable scoring step
       return {
         ...currentState,
-        currentPhase: Math.max(0, Math.min(phaseIndex, TURN_PHASES.length - 1)),
+        currentPhase: newPhase,
+        ...(fromCommitToScoring ? { isScoringStep: true } : {}),
       }
     })
   }, [updateState, abilityMode, setAbilityMode])
@@ -1698,6 +1704,14 @@ export const useGameState = (props: UseGameStateProps = {}) => {
   }, [])
 
   const nextPhase = useCallback(() => {
+    // Always clear line selection modes when changing phase
+    if (abilityMode && setAbilityMode) {
+      const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
+      if (lineSelectionModes.includes(abilityMode.mode)) {
+        setAbilityMode(null);
+      }
+    }
+
     updateState(currentState => {
       if (!currentState.isGameStarted) {
         return currentState
@@ -1776,24 +1790,32 @@ export const useGameState = (props: UseGameStateProps = {}) => {
       newState.currentPhase = nextPhaseIndex
       return newState
     })
-  }, [updateState, completeTurn])
+  }, [updateState, completeTurn, abilityMode, setAbilityMode])
 
   const prevPhase = useCallback(() => {
+    // Always clear line selection modes when changing phase
+    if (abilityMode && setAbilityMode) {
+      const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
+      if (lineSelectionModes.includes(abilityMode.mode)) {
+        setAbilityMode(null);
+      }
+    }
+
     updateState(currentState => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      // IMPORTANT: When exiting scoring step, immediately return to Commit phase (phase 3)
-      // to prevent visual glitch showing an incorrect phase
+      // If in scoring step, exit it AND move to Commit phase (one click)
       if (currentState.isScoringStep) {
         return { ...currentState, isScoringStep: false, currentPhase: 3 }
       }
+      // Otherwise just move to previous phase
       return {
         ...currentState,
         currentPhase: Math.max(0, currentState.currentPhase - 1),
       }
     })
-  }, [updateState])
+  }, [updateState, abilityMode, setAbilityMode])
 
   /**
    * closeRoundEndModal - Close the round end modal and start next round
