@@ -653,9 +653,6 @@ export const useGameState = () => {
           // Sync card images from database (important for tokens after reconnection)
           const syncedData = syncGameStateImages(data)
 
-          // Debug: log announced cards received from server
-          const announcedCards = syncedData.players.map(p => ({ name: p.name, announced: p.announcedCard?.name || 'none', handSize: p.hand.length }))
-
           // Mark that we've received server state - now safe to send updates
           if (!receivedServerStateRef.current) {
             receivedServerStateRef.current = true
@@ -2159,13 +2156,6 @@ export const useGameState = () => {
                         (cardToMove.types?.includes('Token') || cardToMove.types?.includes('Token Unit'))
 
         if (isToken) {
-          // Fail-safe: if card was removed from announced, restore it before returning
-          if (removedCardFromAnnounced) {
-            const restorePlayer = newState.players.find(p => p.id === removedCardFromAnnounced.playerId)
-            if (restorePlayer && !restorePlayer.announcedCard) {
-              restorePlayer.announcedCard = removedCardFromAnnounced.card
-            }
-          }
           return currentState
         }
 
@@ -2174,13 +2164,6 @@ export const useGameState = () => {
         const player = newState.players.find(p => p.id === target.playerId)
 
         if (!player) {
-          // Fail-safe: restore card to announced
-          if (removedCardFromAnnounced) {
-            const restorePlayer = newState.players.find(p => p.id === removedCardFromAnnounced.playerId)
-            if (restorePlayer && !restorePlayer.announcedCard) {
-              restorePlayer.announcedCard = removedCardFromAnnounced.card
-            }
-          }
           return currentState
         }
 
@@ -2265,14 +2248,6 @@ export const useGameState = () => {
                         (cardToMove.types?.includes('Token') || cardToMove.types?.includes('Token Unit'))
 
         if (isToken) {
-          // Fail-safe: if card was removed from announced, restore it before returning
-          if (removedCardFromAnnounced) {
-            const restorePlayer = newState.players.find(p => p.id === removedCardFromAnnounced.playerId)
-            if (restorePlayer && !restorePlayer.announcedCard) {
-              restorePlayer.announcedCard = removedCardFromAnnounced.card
-            }
-          }
-          // Return currentState to discard changes (including removal from announced)
           return currentState
         }
 
@@ -2285,13 +2260,6 @@ export const useGameState = () => {
         const player = newState.players.find(p => p.id === target.playerId)
 
         if (!player) {
-          // Fail-safe: restore card to announced
-          if (removedCardFromAnnounced) {
-            const restorePlayer = newState.players.find(p => p.id === removedCardFromAnnounced.playerId)
-            if (restorePlayer && !restorePlayer.announcedCard) {
-              restorePlayer.announcedCard = removedCardFromAnnounced.card
-            }
-          }
           return currentState
         }
 
