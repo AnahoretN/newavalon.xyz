@@ -1606,9 +1606,10 @@ export const useGameState = (props: UseGameStateProps = {}) => {
       }
 
       const newPhase = Math.max(0, Math.min(phaseIndex, TURN_PHASES.length - 1))
-      const fromCommitToScoring = currentState.currentPhase === 2 && newPhase === 3 && currentState.activePlayerId === localPlayerIdRef.current
+      const fromCommitToScoring = currentState.currentPhase === 2 && newPhase === 3
 
-      // When entering Scoring from Commit (for local player), enable scoring step
+      // When entering Scoring from Commit (for any active player), enable scoring step
+      // This matches the behavior of nextPhase
       return {
         ...currentState,
         currentPhase: newPhase,
@@ -1793,21 +1794,21 @@ export const useGameState = (props: UseGameStateProps = {}) => {
   }, [updateState, completeTurn, abilityMode, setAbilityMode])
 
   const prevPhase = useCallback(() => {
-    // Always clear line selection modes when changing phase
-    if (abilityMode && setAbilityMode) {
-      const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
-      if (lineSelectionModes.includes(abilityMode.mode)) {
-        setAbilityMode(null);
-      }
-    }
-
     updateState(currentState => {
       if (!currentState.isGameStarted) {
         return currentState
       }
-      // If in scoring step, exit it AND move to Commit phase (one click)
+      // Always clear line selection modes when changing phase
+      if (abilityMode && setAbilityMode) {
+        const lineSelectionModes = ['SCORE_LAST_PLAYED_LINE', 'SELECT_LINE_END', 'INTEGRATOR_LINE_SELECT', 'ZIUS_LINE_SELECT'];
+        if (lineSelectionModes.includes(abilityMode.mode)) {
+          setAbilityMode(null);
+        }
+      }
+
+      // If in scoring step, exit it AND move to previous phase (Commit or Setup)
       if (currentState.isScoringStep) {
-        return { ...currentState, isScoringStep: false, currentPhase: 3 }
+        return { ...currentState, isScoringStep: false, currentPhase: Math.max(0, currentState.currentPhase - 1) }
       }
       // Otherwise just move to previous phase
       return {
@@ -1815,7 +1816,7 @@ export const useGameState = (props: UseGameStateProps = {}) => {
         currentPhase: Math.max(0, currentState.currentPhase - 1),
       }
     })
-  }, [updateState, abilityMode, setAbilityMode])
+  }, [updateState])
 
   /**
    * closeRoundEndModal - Close the round end modal and start next round
