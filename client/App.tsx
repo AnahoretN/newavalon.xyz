@@ -49,6 +49,10 @@ const COUNTER_BG_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v17636
 
 const App = memo(function App() {
   const { t } = useLanguage()
+
+  // Declare ability state early (needed by useGameState)
+  const [abilityMode, setAbilityMode] = useState<AbilityAction | null>(null)
+
   const gameStateHook = useGameState({ abilityMode, setAbilityMode })
 
   const {
@@ -267,7 +271,6 @@ const App = memo(function App() {
   }, [hideDummyCards])
 
   const [justAutoTransitioned, setJustAutoTransitioned] = useState(false)
-  const [abilityMode, setAbilityMode] = useState<AbilityAction | null>(null)
   const [actionQueue, setActionQueue] = useState<AbilityAction[]>([])
   const [validTargets, setValidTargets] = useState<{row: number, col: number}[]>([])
   const [validHandTargets, setValidHandTargets] = useState<{playerId: number, cardIndex: number}[]>([])
