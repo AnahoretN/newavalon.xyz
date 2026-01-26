@@ -325,9 +325,14 @@ export function handleUpdateState(ws, data) {
                 // The most recently drawn card is at the end of hand
                 const drawnCard = serverPlayerAfterDraw.hand[serverPlayerAfterDraw.hand.length - 1];
                 // Remove this card from client's deck before merge (it's stale)
+                const beforeFilter = clientDeckToMerge.length;
                 clientDeckToMerge = clientDeckToMerge.filter((c: any) =>
                   !(c.id === drawnCard.id && c.ownerId === drawnCard.ownerId)
                 );
+                // Log for debugging the second draw issue
+                logger.info(`[DrawFix] Player ${clientPlayer.id}: drew ${drawnCard.name}, filtered ${beforeFilter - clientDeckToMerge.length} card(s) from client deck`);
+              } else if (justDrewForThisPlayer) {
+                logger.info(`[DrawFix] Player ${clientPlayer.id}: justDrewForThisPlayer=true but hand.length=${serverPlayerAfterDraw.hand.length}`);
               }
 
               // Merge hand, deck, and discard - combining statuses and adding new cards from client

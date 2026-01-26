@@ -280,8 +280,10 @@ export function performDrawPhase(gameState: any): void {
   if (shouldDraw) {
     // Draw exactly 1 card from top of deck
     const cardToDraw = activePlayer.deck[0];
+    const deckBefore = activePlayer.deck.length;
     activePlayer.deck.splice(0, 1);
     activePlayer.hand.push(cardToDraw);
+    logger.info(`[DrawPhase] Player ${activePlayer.id} (${activePlayer.name}) drew ${cardToDraw?.name}, deck: ${deckBefore} -> ${activePlayer.deck.length}, hand: ${activePlayer.hand.length}`);
 
     // Log card draw
     logAction(gameState.gameId, GameActions.CARD_DRAWN, {
