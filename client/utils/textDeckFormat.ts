@@ -8,9 +8,12 @@
 import { getCardDefinition, getAllCards } from '../content'
 import { resources } from '../locales'
 import type { CustomDeckFile } from '../types'
+import { MAX_DECK_SIZE } from './deckValidation'
 
-export const MAX_DECK_SIZE = 60
 export const MAX_LINE_LENGTH = 200
+
+// Re-export MAX_DECK_SIZE from deckValidation for convenience
+export { MAX_DECK_SIZE } from './deckValidation'
 export const MAX_FILE_SIZE = 10 * 1024 // 10KB
 
 /**
