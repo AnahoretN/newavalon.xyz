@@ -105,7 +105,7 @@
       "imageUrl": "https://res.cloudinary.com/dxxh6meej/image/upload/v1763253311/HOO_VIGILANT_SPOTTER_eiephm.png",
       "fallbackImage": "/images/cards/HOO_VIGILANT_SPOTTER.png",
       "power": 1,
-      "ability": "Support ⇒ Pass: When a revealed card of the opponent enters the battlefield, gain 2 points.\nCommit: Reveal 1 card from an opponent's hand.",
+      "ability": "Pass (requires Support): When a revealed card of the opponent enters the battlefield, gain 2 points.\nCommit: Reveal 1 card from an opponent's hand.",
       "flavorText": "- \"Patience is a weapon. Vengeance is an art.\"",
       "types": ["Unit", "Hoods"],
       "faction": "Hoods",
