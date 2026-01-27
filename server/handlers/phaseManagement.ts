@@ -312,9 +312,8 @@ export function performPreparationPhase(gameState: any): void {
     const deckBefore = activePlayer.deck.length;
     activePlayer.deck.splice(0, 1);
     activePlayer.hand.push(cardToDraw);
-    logger.info(`[PreparationPhase] Player ${activePlayer.id} (${activePlayer.name}) drew ${cardToDraw?.name}, deck: ${deckBefore} -> ${activePlayer.deck.length}, hand: ${activePlayer.hand.length}`);
 
-    // Log card draw
+    // Log card draw (to detailed game logs)
     logAction(gameState.gameId, GameActions.CARD_DRAWN, {
       playerId: activePlayer.id,
       playerName: activePlayer.name,
@@ -556,8 +555,6 @@ export function handleSetPhase(ws, data) {
 export function handleStartNextRound(ws, data) {
   try {
     const { gameId } = data;
-    logger.info(`[handleStartNextRound] Received START_NEXT_ROUND for game: ${gameId}`);
-
     const gameState = getGameState(gameId);
 
     if (!gameState) {
@@ -568,8 +565,6 @@ export function handleStartNextRound(ws, data) {
       }));
       return;
     }
-
-    logger.info(`[handleStartNextRound] Before: round=${gameState.currentRound}, modalOpen=${gameState.isRoundEndModalOpen}, scores=${gameState.players.map((p: any) => p.score).join(',')}`);
 
     // Increment round number
     gameState.currentRound = (gameState.currentRound || 1) + 1;
@@ -588,8 +583,6 @@ export function handleStartNextRound(ws, data) {
     // Mark that round end hasn't been checked for the new round yet
     // This prevents the modal from immediately reopening when the first player takes their turn
     gameState.roundEndChecked = false;
-
-    logger.info(`[handleStartNextRound] After: round=${gameState.currentRound}, modalOpen=${gameState.isRoundEndModalOpen}, scores=${gameState.players.map((p: any) => p.score).join(',')}`);
 
     // Log next round start
     logAction(gameId, GameActions.ROUND_STARTED, {

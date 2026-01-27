@@ -4,6 +4,240 @@
 
 import { CONFIG } from './config.js';
 import crypto from 'crypto';
+import type { WebSocket } from 'ws';
+
+// Extended WebSocket interface with send method
+interface ExtendedWebSocket extends WebSocket {
+  send(data: string, cb?: (err?: Error) => void): void;
+}
+
+/**
+ * Validation result type
+ */
+export interface ValidationResult {
+  isValid: boolean;
+  errorMessage?: string;
+  sanitizedData?: Record<string, unknown>;
+}
+
+/**
+ * Send error response to WebSocket client
+ */
+export function sendErrorResponse(ws: ExtendedWebSocket, message: string): void {
+  try {
+    ws.send(JSON.stringify({
+      type: 'ERROR',
+      message
+    }));
+  } catch {
+    // Ignore send errors
+  }
+}
+
+/**
+ * Validate basic message structure
+ * Checks that data is an object and has a type field
+ */
+export function validateMessageStructure(data: unknown): ValidationResult {
+  if (!data || typeof data !== 'object') {
+    return { isValid: false, errorMessage: 'Invalid data format' };
+  }
+
+  const dataObj = data as Record<string, unknown>;
+
+  if (!dataObj.type || typeof dataObj.type !== 'string') {
+    return { isValid: false, errorMessage: 'Missing or invalid message type' };
+  }
+
+  return { isValid: true, sanitizedData: dataObj };
+}
+
+/**
+ * Validate gameId field
+ */
+export function validateGameId(gameId: unknown): ValidationResult {
+  if (!gameId || typeof gameId !== 'string') {
+    return { isValid: false, errorMessage: 'Invalid or missing gameId' };
+  }
+
+  // Sanitize the gameId
+  const sanitized = sanitizeString(gameId);
+
+  if (!sanitized) {
+    return { isValid: false, errorMessage: 'Invalid gameId format' };
+  }
+
+  return { isValid: true, sanitizedData: { gameId: sanitized } };
+}
+
+/**
+ * Validate that a field exists and is of expected type
+ */
+export function validateField(
+  data: Record<string, unknown>,
+  fieldName: string,
+  expectedType: 'string' | 'number' | 'boolean' | 'object' | 'array'
+): ValidationResult {
+  const value = data[fieldName];
+
+  if (value === undefined || value === null) {
+    return { isValid: false, errorMessage: `Missing ${fieldName}` };
+  }
+
+  const actualType = Array.isArray(value) ? 'array' : typeof value;
+
+  if (actualType !== expectedType) {
+    return { isValid: false, errorMessage: `Invalid ${fieldName}: expected ${expectedType}` };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Common validation for visual effect messages
+ * Validates message size, data structure, gameId, and a data payload field
+ */
+export function validateVisualEffectMessage(
+  data: Record<string, unknown>,
+  dataFieldName: string
+): ValidationResult {
+  // Validate message size
+  if (!validateMessageSize(JSON.stringify(data))) {
+    return { isValid: false, errorMessage: 'Message size exceeds limit' };
+  }
+
+  // Validate basic structure
+  const structureResult = validateMessageStructure(data);
+  if (!structureResult.isValid) {
+    return structureResult;
+  }
+
+  // Validate gameId
+  const gameIdResult = validateGameId(data.gameId);
+  if (!gameIdResult.isValid) {
+    return gameIdResult;
+  }
+
+  // Validate the data payload field
+  const dataField = data[dataFieldName];
+  if (!dataField || typeof dataField !== 'object') {
+    return { isValid: false, errorMessage: `Invalid or missing ${dataFieldName}` };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Common validation for game state update messages
+ */
+export function validateGameStateMessage(data: Record<string, unknown>): ValidationResult {
+  const structureResult = validateMessageStructure(data);
+  if (!structureResult.isValid) {
+    return structureResult;
+  }
+
+  const { gameState, gameId } = data as { gameState: unknown; gameId: unknown };
+
+  if (!gameState || typeof gameState !== 'object') {
+    return { isValid: false, errorMessage: 'Invalid game state data' };
+  }
+
+  if (!gameId || typeof gameId !== 'string') {
+    return { isValid: false, errorMessage: 'Missing gameId in game state' };
+  }
+
+  return { isValid: true };
+}
+
+/**
+ * Message field validation schema
+ */
+export interface MessageFieldSchema {
+  name: string;
+  type: 'string' | 'number' | 'boolean' | 'object' | 'array';
+  required: boolean;
+  validate?: (value: unknown) => boolean;
+}
+
+/**
+ * Message validation schema
+ */
+export interface MessageSchema {
+  fields: MessageFieldSchema[];
+}
+
+/**
+ * Schemas for common message types
+ */
+export const MessageSchemas: Record<string, MessageSchema> = {
+  // Messages requiring gameId
+  WITH_GAME_ID: {
+    fields: [
+      { name: 'gameId', type: 'string', required: true }
+    ]
+  },
+  // Messages requiring gameId + playerId
+  WITH_PLAYER_ID: {
+    fields: [
+      { name: 'gameId', type: 'string', required: true },
+      { name: 'playerId', type: 'number', required: true }
+    ]
+  },
+  // Visual effects messages
+  VISUAL_EFFECT: {
+    fields: [
+      { name: 'gameId', type: 'string', required: true }
+    ]
+  },
+  // Phase management
+  PHASE_SET: {
+    fields: [
+      { name: 'gameId', type: 'string', required: true },
+      { name: 'phaseIndex', type: 'number', required: true }
+    ]
+  },
+  TOGGLE_BOOLEAN: {
+    fields: [
+      { name: 'gameId', type: 'string', required: true },
+      { name: 'enabled', type: 'boolean', required: true }
+    ]
+  }
+};
+
+/**
+ * Validate message against a schema
+ */
+export function validateMessageAgainstSchema(
+  data: Record<string, unknown>,
+  schema: MessageSchema
+): ValidationResult {
+  for (const field of schema.fields) {
+    const value = data[field.name];
+
+    // Check required fields
+    if (field.required && (value === undefined || value === null)) {
+      return { isValid: false, errorMessage: `Missing required field: ${field.name}` };
+    }
+
+    // Skip type check if value is optional and not provided
+    if (!field.required && (value === undefined || value === null)) {
+      continue;
+    }
+
+    // Check type
+    const actualType = Array.isArray(value) ? 'array' : typeof value;
+    if (actualType !== field.type) {
+      return { isValid: false, errorMessage: `Invalid type for ${field.name}: expected ${field.type}, got ${actualType}` };
+    }
+
+    // Run custom validation if provided
+    if (field.validate && !field.validate(value)) {
+      return { isValid: false, errorMessage: `Validation failed for field: ${field.name}` };
+    }
+  }
+
+  return { isValid: true };
+}
 
 /**
  * Sanitize string input

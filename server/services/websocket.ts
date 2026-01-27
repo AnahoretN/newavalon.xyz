@@ -3,7 +3,7 @@
  */
 
 import { logger } from '../utils/logger.js';
-import { validateMessageSize } from '../utils/security.js';
+import { validateMessageSize, sendErrorResponse, validateMessageStructure } from '../utils/security.js';
 import { isRateLimited, cleanupRateLimitData } from './rateLimit.js';
 import {
   getGameState,
@@ -116,55 +116,41 @@ export function setupWebSocket(wss) {
  */
 function handleWebSocketMessage(ws, message) {
   try {
-    // Debug log: log ALL incoming messages before any processing
+    // Validate message size (before parsing to prevent memory issues)
+    if (!validateMessageSize(message)) {
+      sendErrorResponse(ws, 'Message too large');
+      return;
+    }
+
+    // Parse message
     const messageStr = message.toString();
     let parsedData;
     try {
       parsedData = JSON.parse(messageStr);
-      logger.info(`[handleWebSocketMessage] RAW message: type=${parsedData.type}, gameId=${parsedData.gameId}`);
-    } catch (e) {
-      logger.info(`[handleWebSocketMessage] RAW message (unparseable): ${messageStr.substring(0, 100)}`);
-    }
-
-    // Validate message size
-    if (!validateMessageSize(message)) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Message too large'
-      }));
+    } catch {
+      sendErrorResponse(ws, 'Invalid message format');
       return;
     }
 
     // Rate limiting check
     if (isRateLimited(ws)) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Rate limit exceeded'
-      }));
+      sendErrorResponse(ws, 'Rate limit exceeded');
       return;
     }
 
-    // Use already parsed data
-    const data = parsedData;
-
-    // Validate message structure
-    if (!data.type) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Missing message type'
-      }));
+    // Validate message structure using centralized validator
+    const structureResult = validateMessageStructure(parsedData);
+    if (!structureResult.isValid) {
+      sendErrorResponse(ws, structureResult.errorMessage || 'Invalid message structure');
       return;
     }
 
     // Route message to appropriate handler
-    routeMessage(ws, data);
+    routeMessage(ws, parsedData);
 
   } catch (error) {
     logger.error('Error handling WebSocket message:', error);
-    ws.send(JSON.stringify({
-      type: 'ERROR',
-      message: 'Internal server error'
-    }));
+    sendErrorResponse(ws, 'Internal server error');
   }
 }
 
@@ -172,9 +158,6 @@ function handleWebSocketMessage(ws, message) {
  * Route message to appropriate handler
  */
 function routeMessage(ws, data) {
-  // Debug log for all incoming messages
-  logger.info(`[routeMessage] Received message type: ${data.type}, gameId: ${data.gameId}`);
-
   const handlers = {
     'SUBSCRIBE': handleSubscribe,
     'CREATE_GAME': handleCreateGame,
@@ -237,7 +220,6 @@ function routeMessage(ws, data) {
 
   const handler = handlers[data.type];
   if (handler) {
-    logger.info(`[routeMessage] Calling handler for: ${data.type}`);
     handler(ws, data);
   } else {
     logger.warn(`Unknown message type: ${data.type}`);
@@ -288,11 +270,6 @@ export function broadcastToGame(gameId, gameState, excludeClient = null) {
   try {
     const sanitizedGameState = sanitizeGameState(gameState);
     const message = JSON.stringify(sanitizedGameState);
-
-    // Debug logging for round transition
-    if (sanitizedGameState.isRoundEndModalOpen === false && sanitizedGameState.currentRound >= 2) {
-      logger.info(`[broadcastToGame] Broadcasting state for round transition: gameId=${gameId}, currentRound=${sanitizedGameState.currentRound}, isRoundEndModalOpen=${sanitizedGameState.isRoundEndModalOpen}, hasPlayers=${!!sanitizedGameState.players}, hasBoard=${!!sanitizedGameState.board}`);
-    }
 
     // Get the client game map to find all clients associated with this game
     const clientGameMap = getClientGameMap();

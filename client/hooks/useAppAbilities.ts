@@ -4,7 +4,6 @@ import { getCardAbilityAction, canActivateAbility } from '@server/utils/autoAbil
 import { checkActionHasTargets, validateTarget } from '@server/utils/targeting'
 import { hasReadyAbilityInCurrentPhase } from '@/utils/autoAbilities'
 import { TIMING } from '@/utils/common'
-import { logger } from '@/utils/logger'
 
 interface UseAppAbilitiesProps {
     gameState: GameState;
@@ -529,9 +528,7 @@ export const useAppAbilities = ({
         }
 
         // Debug: log what we're looking for
-        logger.debug('[GAWAIN] Looking for targets in line with', sourceCoords, 'actorId:', actorId)
         const hasTargets = checkActionHasTargets(aimStackAction, gameState, actorId, commandContext)
-        logger.debug('[GAWAIN] Has targets:', hasTargets)
 
         // 3. Check Valid Targets -> Stack Mode or No Target
         if (hasTargets) {
@@ -1084,14 +1081,11 @@ export const useAppAbilities = ({
   }, [abilityMode, gameState, localPlayerId, scoreLine, nextPhase, setAbilityMode, modifyBoardCardPower, markAbilityUsed, scoreDiagonal, updatePlayerScore, triggerFloatingText, commandContext, updateState])
 
   const handleBoardCardClick = useCallback((card: Card, boardCoords: { row: number, col: number }) => {
-    logger.debug('[handleBoardCardClick] Called - card:', card.name, 'coords:', boardCoords, 'abilityMode:', abilityMode?.mode)
 
     if (setPlayMode !== null && setPlayMode !== undefined && cursorStack) {
-      logger.debug('[handleBoardCardClick] Blocked by cursorStack')
       return
     }
     if (interactionLock.current) {
-      logger.debug('[handleBoardCardClick] Blocked by interactionLock')
       return
     }
 
@@ -1396,23 +1390,18 @@ export const useAppAbilities = ({
         return
       }
       if (mode === 'SWAP_POSITIONS' && sourceCoords && sourceCoords.row >= 0) {
-        logger.debug('[SWAP_POSITIONS] Checking swap - sourceCard:', sourceCard?.name, 'targetCard:', card.name, 'sourceCoords:', sourceCoords, 'boardCoords:', boardCoords)
         // Verify the card at sourceCoords is still the expected sourceCard
         const actualSourceCard = gameState.board[sourceCoords.row][sourceCoords.col].card
         if (!actualSourceCard || actualSourceCard.id !== sourceCard?.id) {
-          logger.debug('[SWAP_POSITIONS] Blocked - source card moved, aborting swap')
           setAbilityMode(null) // Clear the mode since source moved
           return
         }
         if (sourceCard && sourceCard.id === card.id) {
-          logger.debug('[SWAP_POSITIONS] Blocked - same card')
           return
         }
         if (payload.filter && !payload.filter(card, boardCoords.row, boardCoords.col)) {
-          logger.debug('[SWAP_POSITIONS] Blocked - filter failed')
           return
         }
-        logger.debug('[SWAP_POSITIONS] Executing swap!')
         // Swap cards and remove ready status from where Reckless Provocateur ends up (boardCoords)
         swapCards(sourceCoords, boardCoords, boardCoords)
         setTimeout(() => setAbilityMode(null), TIMING.MODE_CLEAR_DELAY)
@@ -1918,15 +1907,12 @@ export const useAppAbilities = ({
   }, [interactionLock, abilityMode, gameState, localPlayerId, handleLineSelection, moveItem, markAbilityUsed, setAbilityMode, spawnToken, setCommandContext, resurrectDiscardedCard, updatePlayerScore, commandContext, handleActionExecution, triggerFloatingText, clearValidTargets])
 
   const handleHandCardClick = useCallback((player: Player, card: Card, cardIndex: number) => {
-    logger.debug('[handleHandCardClick] CALLED - player:', player.name, 'card:', card.name, 'cardIndex:', cardIndex, 'cursorStack:', cursorStack?.type)
     if (interactionLock.current) {
-      logger.debug('[handleHandCardClick] Blocked by interactionLock')
       return
     }
 
     // NEW: Handle cursorStack for hand cards (e.g., Revealed tokens from Threat Analyst)
     if (cursorStack && setPlayMode !== null && setPlayMode !== undefined) {
-      logger.debug('[handleHandCardClick] Processing cursorStack for hand card:', card.name, 'stack:', cursorStack.type)
 
       // Check if this card is a valid target for the cursorStack
       const constraints = {
@@ -1946,7 +1932,6 @@ export const useAppAbilities = ({
         gameState.players,
       )
 
-      logger.debug('[handleHandCardClick] Valid target for cursorStack?', isValid)
 
       if (isValid) {
         // Apply the token/status to the card

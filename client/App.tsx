@@ -41,7 +41,6 @@ import { countersDatabase, fetchContentDatabase } from './content'
 import { validateTarget, calculateValidTargets, checkActionHasTargets } from '@server/utils/targeting'
 import { getCommandAction } from '@server/utils/commandLogic'
 import { useLanguage } from './contexts/LanguageContext'
-import { logger } from './utils/logger'
 import { TIMING } from './utils/common'
 import { shuffleDeck } from '@shared/utils/array'
 
@@ -1264,13 +1263,10 @@ const App = memo(function App() {
         const actorId = actionToProcess.sourceCard?.ownerId || localPlayerId
         const hasTargets = checkActionHasTargets(actionToProcess, gameState, actorId, commandContext)
 
-        logger.debug('[ActionQueue] Processing action:', actionToProcess.mode, 'hasTargets:', hasTargets)
 
         if (hasTargets) {
-          logger.debug('[ActionQueue] Setting abilityMode:', actionToProcess)
           setAbilityMode(actionToProcess)
         } else {
-          logger.debug('[ActionQueue] No targets, triggering no-target overlay')
           if (actionToProcess.sourceCoords && actionToProcess.sourceCoords.row >= 0) {
             triggerNoTarget(actionToProcess.sourceCoords)
           }

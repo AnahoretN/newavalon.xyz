@@ -6,7 +6,10 @@
 import { logger } from '../utils/logger.js';
 import { getGameState, getClientGameMap } from '../services/gameState.js';
 import { getWssInstance } from '../services/websocket.js';
-import { sanitizeString, validateMessageSize } from '../utils/security.js';
+import {
+  sanitizeString,
+  validateMessageSize
+} from '../utils/security.js';
 import type { WebSocket } from 'ws';
 
 interface ExtendedWebSocket extends WebSocket {
@@ -51,68 +54,6 @@ function broadcastVisualEffect(
         }
       }
     });
-  }
-}
-
-/**
- * Handle TRIGGER_HIGHLIGHT message
- * Broadcasts a highlight effect to all clients in the game
- */
-export function handleTriggerHighlight(ws: ExtendedWebSocket, data: any) {
-  try {
-    // Security: Validate message size
-    if (!validateMessageSize(JSON.stringify(data))) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Message size exceeds limit'
-      }));
-      return;
-    }
-
-    // Input validation
-    if (!data || typeof data !== 'object') {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Invalid data format'
-      }));
-      return;
-    }
-
-    const { gameId, highlightData } = data;
-
-    if (!gameId || typeof gameId !== 'string') {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Invalid or missing gameId'
-      }));
-      return;
-    }
-
-    if (!highlightData || typeof highlightData !== 'object') {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Invalid or missing highlightData'
-      }));
-      return;
-    }
-
-    // Security: Sanitize gameId
-    const sanitizedGameId = sanitizeString(gameId);
-
-    const gameState = getGameState(sanitizedGameId);
-
-    if (!gameState) {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Game not found'
-      }));
-      return;
-    }
-
-    // Broadcast the highlight event to ALL clients in the game (including sender)
-    broadcastVisualEffect(ws, sanitizedGameId, 'HIGHLIGHT_TRIGGERED', { highlightData });
-  } catch (err: any) {
-    logger.error('Failed to trigger highlight:', err);
   }
 }
 
@@ -419,7 +360,6 @@ export function handleTriggerHandCardSelection(ws: ExtendedWebSocket, data: any)
       return;
     }
 
-    logger.info(`[HAND_CARD_SELECTION] Broadcasting to game ${sanitizedGameId}, data: ${JSON.stringify(handCardSelectionData)}`);
     // Broadcast the hand card selection event to ALL clients in the game (including sender)
     broadcastVisualEffect(ws, sanitizedGameId, 'HAND_CARD_SELECTION_TRIGGERED', { handCardSelectionData });
   } catch (err: any) {

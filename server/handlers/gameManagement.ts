@@ -140,7 +140,6 @@ export function handleUpdateState(ws, data) {
           playerToRestore.isDummy = false;
           playerToRestore.disconnectTimestamp = undefined;
           assignedPlayerId = playerToRestore.id;
-          logger.info(`Player ${assignedPlayerId} reconnected via UPDATE_STATE to game ${gameIdToUpdate}`);
         }
       }
 
@@ -152,7 +151,6 @@ export function handleUpdateState(ws, data) {
           player1.isDummy = false;
           player1.disconnectTimestamp = undefined;
           assignedPlayerId = 1;
-          logger.info(`Player 1 restored via UPDATE_STATE (disconnected) to game ${gameIdToUpdate}`);
         }
       }
 
@@ -344,15 +342,9 @@ export function handleUpdateState(ws, data) {
                 // The most recently drawn card is at the end of hand
                 const drawnCard = serverPlayerAfterDraw.hand[serverPlayerAfterDraw.hand.length - 1];
                 // Remove this card from client's deck before merge (it's stale)
-                const beforeFilter = clientDeckToMerge.length;
                 clientDeckToMerge = clientDeckToMerge.filter((c: any) =>
                   !(c.id === drawnCard.id && c.ownerId === drawnCard.ownerId)
                 );
-                // Log for debugging - note which path triggered the filter
-                const path = justDrewForThisPlayer ? 'UPDATE_STATE' : 'toggle';
-                logger.info(`[DrawFix] Player ${clientPlayer.id} (${path}): drew ${drawnCard.name}, filtered ${beforeFilter - clientDeckToMerge.length} card(s) from client deck`);
-              } else if (shouldFilterDrawnCard) {
-                logger.info(`[DrawFix] Player ${clientPlayer.id}: shouldFilter=true but hand.length=${serverPlayerAfterDraw.hand.length}`);
               }
 
               // Merge hand, deck, and discard - combining statuses and adding new cards from client
