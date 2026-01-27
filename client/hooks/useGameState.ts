@@ -295,6 +295,7 @@ export const useGameState = (props: UseGameStateProps = {}) => {
     currentRound: 1,
     turnNumber: 1,
     roundEndTriggered: false,
+    roundEndChecked: false,
     roundWinners: {},
     gameWinner: null,
     isRoundEndModalOpen: false,
@@ -664,6 +665,13 @@ export const useGameState = (props: UseGameStateProps = {}) => {
         } else if (!data.type && data.players && data.board) {
           // Only update gameState if it's a valid game state (no type, but has required properties)
           // Sync card images from database (important for tokens after reconnection)
+          logger.info('[ServerSync] Received game state update', {
+            gameId: data.gameId,
+            currentRound: data.currentRound,
+            isRoundEndModalOpen: data.isRoundEndModalOpen,
+            roundEndChecked: data.roundEndChecked,
+            scores: data.players?.map((p: any) => p.score)
+          })
           const syncedData = syncGameStateImages(data)
 
           // Mark that we've received server state - now safe to send updates
@@ -1822,25 +1830,32 @@ export const useGameState = (props: UseGameStateProps = {}) => {
   }, [updateState, abilityMode, setAbilityMode])
 
   /**
-   * closeRoundEndModal - Close the round end modal and start next round
-   * Sends START_NEXT_ROUND message to server which handles score reset and round increment
+   * closeRoundEndModal - Start the next round
+   * Resets player scores and closes the modal
    */
   const closeRoundEndModal = useCallback(() => {
-    logger.info('[closeRoundEndModal] Sending START_NEXT_ROUND message', {
+    logger.info('[closeRoundEndModal] Called', {
+      wsState: ws.current?.readyState,
       gameId: gameStateRef.current.gameId,
-      wsReadyState: ws.current?.readyState
     })
-    if (ws.current?.readyState === WebSocket.OPEN) {
-      const message = JSON.stringify({
+    if (ws.current?.readyState === WebSocket.OPEN && gameStateRef.current.gameId) {
+      const payload = {
         type: 'START_NEXT_ROUND',
         gameId: gameStateRef.current.gameId,
-      })
-      logger.info('[closeRoundEndModal] Sending message:', message)
-      ws.current.send(message)
+      }
+      logger.info('[closeRoundEndModal] Sending:', payload)
+      ws.current.send(JSON.stringify(payload))
+
+      // Immediately close modal locally for responsiveness
+      // Server will broadcast the updated state to confirm
+      updateState(currentState => ({
+        ...currentState,
+        isRoundEndModalOpen: false,
+      }))
     } else {
-      logger.warn('[closeRoundEndModal] WebSocket not open:', ws.current?.readyState)
+      logger.warn('[closeRoundEndModal] Cannot send - WebSocket not open or gameId missing')
     }
-  }, [])
+  }, [updateState])
 
   /**
    * resetGame - Reset game to lobby state while preserving players and deck selections

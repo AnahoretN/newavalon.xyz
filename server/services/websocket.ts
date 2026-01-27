@@ -116,6 +116,16 @@ export function setupWebSocket(wss) {
  */
 function handleWebSocketMessage(ws, message) {
   try {
+    // Debug log: log ALL incoming messages before any processing
+    const messageStr = message.toString();
+    let parsedData;
+    try {
+      parsedData = JSON.parse(messageStr);
+      logger.info(`[handleWebSocketMessage] RAW message: type=${parsedData.type}, gameId=${parsedData.gameId}`);
+    } catch (e) {
+      logger.info(`[handleWebSocketMessage] RAW message (unparseable): ${messageStr.substring(0, 100)}`);
+    }
+
     // Validate message size
     if (!validateMessageSize(message)) {
       ws.send(JSON.stringify({
@@ -134,17 +144,8 @@ function handleWebSocketMessage(ws, message) {
       return;
     }
 
-    // Parse message
-    let data;
-    try {
-      data = JSON.parse(message.toString());
-    } catch {
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Invalid JSON'
-      }));
-      return;
-    }
+    // Use already parsed data
+    const data = parsedData;
 
     // Validate message structure
     if (!data.type) {
@@ -171,6 +172,9 @@ function handleWebSocketMessage(ws, message) {
  * Route message to appropriate handler
  */
 function routeMessage(ws, data) {
+  // Debug log for all incoming messages
+  logger.info(`[routeMessage] Received message type: ${data.type}, gameId: ${data.gameId}`);
+
   const handlers = {
     'SUBSCRIBE': handleSubscribe,
     'CREATE_GAME': handleCreateGame,
@@ -233,6 +237,7 @@ function routeMessage(ws, data) {
 
   const handler = handlers[data.type];
   if (handler) {
+    logger.info(`[routeMessage] Calling handler for: ${data.type}`);
     handler(ws, data);
   } else {
     logger.warn(`Unknown message type: ${data.type}`);
@@ -332,6 +337,7 @@ export function sendToClient(client, message) {
 function sanitizeGameState(gameState) {
   return {
     ...gameState,
+    gameId: gameState.id, // Map server's 'id' to client's expected 'gameId'
     players: gameState.players.map(player => ({
       ...player,
       ws: undefined // Remove WebSocket references

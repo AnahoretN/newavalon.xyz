@@ -1002,6 +1002,7 @@ export function handleResetGame(ws: any, data: any) {
     gameState.roundWinners = {};
     gameState.gameWinner = null;
     gameState.roundEndTriggered = false;
+    gameState.roundEndChecked = false;
     gameState.isRoundEndModalOpen = false;
     gameState.isReadyCheckActive = false;
 

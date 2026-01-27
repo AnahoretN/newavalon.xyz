@@ -104,6 +104,7 @@ export interface TranslationResource {
     hiddenGameTooltip: string;
     gameOver: string;
     roundComplete: string;
+    complete: string;
     winner: string;
     roundWinner: string;
     move: string;

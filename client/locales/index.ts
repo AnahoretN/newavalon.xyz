@@ -64,6 +64,7 @@ const enUI = {
   hiddenGameTooltip: 'Hidden games do not appear in the \'Join Game\' list',
   gameOver: 'Game Over',
   roundComplete: 'Round Complete',
+  complete: 'Complete',
   winner: 'Winner',
   roundWinner: 'Round Winner',
   move: 'Move',

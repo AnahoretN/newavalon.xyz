@@ -91,6 +91,7 @@ export const sr: TranslationResource = {
     hiddenGameTooltip: 'Skrivene igre se ne pojavljuju na listi \'Pridruži se\'',
     gameOver: 'Kraj igre',
     roundComplete: 'Runda završena',
+    complete: 'Završena',
     winner: 'Pobednik',
     roundWinner: 'Pobednik runde',
     move: 'Pomeri',

@@ -60,6 +60,11 @@ export function checkRoundEnd(gameState: any, isDeselectCheck = false): boolean 
     return false;
   }
 
+  // Don't check if round end was already checked for this round (prevents recheck after starting new round)
+  if (gameState.roundEndChecked) {
+    return false;
+  }
+
   // Check if any player has reached the threshold
   return maxScore >= threshold;
 }
@@ -98,6 +103,7 @@ export function endRound(gameState: any): void {
 
   // Mark round as triggered and open modal
   gameState.roundEndTriggered = true;
+  gameState.roundEndChecked = true;
   gameState.isRoundEndModalOpen = true;
 
   // Log round end
@@ -545,19 +551,17 @@ export function handleSetPhase(ws, data) {
 
 /**
  * Handle START_NEXT_ROUND message
- * Starts the next round after round end modal is closed
- * Resets scores to 0, increments round number, closes modal
- * Does NOT pass turn - the same starting player continues
+ * Starts the next round by resetting scores and closing the modal
  */
 export function handleStartNextRound(ws, data) {
-  logger.info(`[handleStartNextRound] Received START_NEXT_ROUND message: gameId=${data.gameId}, playerId=${ws.playerId}`);
-
   try {
     const { gameId } = data;
+    logger.info(`[handleStartNextRound] Received START_NEXT_ROUND for game: ${gameId}`);
+
     const gameState = getGameState(gameId);
 
     if (!gameState) {
-      logger.warn(`[handleStartNextRound] Game not found: ${gameId}`);
+      logger.error(`[handleStartNextRound] Game not found: ${gameId}`);
       ws.send(JSON.stringify({
         type: 'ERROR',
         message: 'Game not found'
@@ -565,42 +569,10 @@ export function handleStartNextRound(ws, data) {
       return;
     }
 
-    if (!gameState.isGameStarted) {
-      logger.warn(`[handleStartNextRound] Game not started: ${gameId}`);
-      ws.send(JSON.stringify({
-        type: 'ERROR',
-        message: 'Game has not started'
-      }));
-      return;
-    }
+    logger.info(`[handleStartNextRound] Before: round=${gameState.currentRound}, modalOpen=${gameState.isRoundEndModalOpen}, scores=${gameState.players.map((p: any) => p.score).join(',')}`);
 
-    logger.info(`[handleStartNextRound] Processing round transition: currentRound=${gameState.currentRound}, gameWinner=${gameState.gameWinner}, isRoundEndModalOpen=${gameState.isRoundEndModalOpen}`);
-
-    // If game has a winner, this is a "Continue Game" action - reset for new match
-    if (gameState.gameWinner !== null) {
-      // Reset for new match
-      gameState.currentRound = 1;
-      gameState.turnNumber = 1;
-      gameState.roundWinners = {};
-      gameState.gameWinner = null;
-      gameState.roundEndTriggered = false;
-
-      // Log new match start
-      logAction(gameId, GameActions.MATCH_STARTED, {
-        round: gameState.currentRound,
-        startingPlayerId: gameState.startingPlayerId
-      }).catch();
-    } else {
-      // Starting next round of current match
-      gameState.currentRound++;
-      gameState.roundEndTriggered = false; // Reset the triggered flag for the new round
-
-      // Log round start
-      logAction(gameId, GameActions.ROUND_STARTED, {
-        round: gameState.currentRound,
-        startingPlayerId: gameState.startingPlayerId
-      }).catch();
-    }
+    // Increment round number
+    gameState.currentRound = (gameState.currentRound || 1) + 1;
 
     // Reset all player scores to 0
     gameState.players.forEach((p: any) => {
@@ -610,23 +582,24 @@ export function handleStartNextRound(ws, data) {
     // Close the modal
     gameState.isRoundEndModalOpen = false;
 
-    // Keep the same starting player - they continue with their setup phase
-    // IMPORTANT: Reset phase-specific ready statuses for the starting player
-    // This ensures setup/commit abilities are available in the new round
-    // NOTE: This does NOT pass turn, just resets statuses
-    if (gameState.startingPlayerId !== undefined && gameState.startingPlayerId !== null) {
-      gameState.activePlayerId = gameState.startingPlayerId;
-      gameState.currentPhase = 1;  // Set to Setup phase
-      resetReadyStatusesForTurn(gameState as any, gameState.startingPlayerId);
-    }
+    // Reset round end triggered flag
+    gameState.roundEndTriggered = false;
 
-    logger.info(`[handleStartNextRound] Broadcasting updated game state: gameId=${gameId}, currentRound=${gameState.currentRound}, isRoundEndModalOpen=${gameState.isRoundEndModalOpen}, activePlayerId=${gameState.activePlayerId}, currentPhase=${gameState.currentPhase}`);
+    // Mark that round end hasn't been checked for the new round yet
+    // This prevents the modal from immediately reopening when the first player takes their turn
+    gameState.roundEndChecked = false;
+
+    logger.info(`[handleStartNextRound] After: round=${gameState.currentRound}, modalOpen=${gameState.isRoundEndModalOpen}, scores=${gameState.players.map((p: any) => p.score).join(',')}`);
+
+    // Log next round start
+    logAction(gameId, GameActions.ROUND_STARTED, {
+      round: gameState.currentRound,
+      startingPlayerId: gameState.startingPlayerId
+    }).catch();
 
     broadcastToGame(gameId, gameState);
-
-    logger.info('[handleStartNextRound] Successfully broadcasted game state');
   } catch (error) {
-    logger.error('[handleStartNextRound] Failed to start next round:', error);
+    logger.error('Failed to start next round:', error);
   }
 }
 
@@ -653,6 +626,7 @@ export function handleStartNewMatch(ws, data) {
     gameState.roundWinners = {};
     gameState.gameWinner = null;
     gameState.roundEndTriggered = false;
+    gameState.roundEndChecked = false;
     gameState.isRoundEndModalOpen = false;
 
     // Reset all player scores to 0

@@ -91,6 +91,7 @@ export const ru: TranslationResource = {
     hiddenGameTooltip: 'Скрытые игры не появляются в списке \'Присоединиться\'',
     gameOver: 'Игра окончена',
     roundComplete: 'Раунд завершен',
+    complete: 'Завершен',
     winner: 'Победитель',
     roundWinner: 'Победитель раунда',
     move: 'Переместить',

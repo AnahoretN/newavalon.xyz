@@ -13,12 +13,12 @@ const ROUND_WIN_MEDAL_URL = 'https://res.cloudinary.com/dxxh6meej/image/upload/v
 
 interface RoundEndModalProps {
     gameState: GameState;
-    onConfirm: () => void; // Start next round
     onContinueGame: () => void; // Start new match after game over
+    onStartNextRound: () => void; // Start next round (resets scores)
     onExit: () => void;
 }
 
-export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfirm, onContinueGame, onExit }) => {
+export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onContinueGame, onStartNextRound, onExit }) => {
   const { t } = useLanguage()
 
   if (!gameState.isRoundEndModalOpen) {
@@ -56,7 +56,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
         {/* Header */}
         <div className="mb-4 text-center">
           <h2 className="text-sm font-bold text-gray-400 uppercase tracking-widest leading-none">
-            {isGameOver ? t('gameOver') : `${t('round')} ${gameState.currentRound} ${t('roundComplete')}`}
+            {isGameOver ? t('gameOver') : `${t('round')} ${gameState.currentRound} ${t('complete')}`}
           </h2>
         </div>
 
@@ -149,7 +149,7 @@ export const RoundEndModal: React.FC<RoundEndModalProps> = ({ gameState, onConfi
             </>
           ) : (
             <button
-              onClick={onConfirm}
+              onClick={onStartNextRound}
               className="bg-green-800 hover:bg-green-700 text-white font-bold py-2 px-6 rounded border border-green-600 text-sm transition-colors w-full"
             >
               {t('startRound')} {nextRound}
